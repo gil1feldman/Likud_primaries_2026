@@ -228,6 +228,7 @@
   #matrixTable td.lead3{ background:#f7e9dc; }
   #matrixTable td.zero{ color:#c9ccd3; }
   .legend{ display:flex; gap:14px; font-size:11.5px; color:var(--sub); margin-top:8px; flex-wrap:wrap; }
+  .max-badge{ font-size:10.5px; background:#fdecea; color:#a33; border-radius:10px; padding:1px 7px; white-space:nowrap; }
   .legend span{ display:inline-flex; align-items:center; gap:5px; }
   .legend i{ width:12px; height:12px; border-radius:3px; display:inline-block; }
 </style>
@@ -600,7 +601,7 @@ function onRaceChange(){
   const noteEl = document.getElementById('raceNote');
   if(currentRaceKey === 'ארצית'){
     noteEl.style.display = 'block';
-    noteEl.textContent = 'שימו לב: בטופס ההצבעה לרשימה הארצית כל מצביע בחר עד 12 מועמדים, כך שהאחוז המקסימלי התיאורטי של מועמד באתר (מתוך כלל הקולות/הסימונים) הוא כ-8.3% (1/12) — מועמד שמקבל אחוז גבוה יחסית לכך זכה לתמיכה רחבה מאוד.';
+    noteEl.textContent = 'שימו לב: בטופס ההצבעה לרשימה הארצית כל מצביע בחר עד 12 מועמדים, ולכן אחוז הקולות של מועמד באתר מוגבל תיאורטית ל-8.3% (1/12) לכל היותר. הדבר היחיד שידוע בוודאות: מועמד שמגיע ל-8.3% (מסומן 🔥) קיבל בפועל את קולם של כל מי שהצביע באותו אתר. לא ניתן לתרגם אחוזים נמוכים יותר ל"אחוז מצביעים" בלי לדעת כמה מועמדים כל אדם סימן בפועל.';
   } else {
     noteEl.style.display = 'none';
   }
@@ -632,10 +633,23 @@ function escapeHtml(s){
 function pct(n,d){ return d>0 ? (n/d*100) : 0; }
 function fmtPct(n,d){ return pct(n,d).toFixed(1)+'%'; }
 
+// National-list ballots let each voter pick up to 12 candidates, so a candidate's
+// share of total votes cast at a site caps at 100/12 = 8.33%. The ONLY thing we can
+// say for certain from this: a candidate AT that cap was picked by every single voter
+// at the site. We do NOT extrapolate a "% of voters" for lower values, since that
+// would require assuming everyone used all 12 picks, which we don't know.
+const NATIONAL_MAX_PCT = 100/12;
+function isNationalRace(){ return currentRaceKey === 'ארצית'; }
+function isAtNationalMax(p){ return p >= NATIONAL_MAX_PCT - 0.05; }
+function maxBadge(p, nat){
+  return (nat && isAtNationalMax(p)) ? ' <span class="max-badge" title="כל מי שהצביע באתר בחר במועמד הזה">🔥 כולם בחרו בו</span>' : '';
+}
+
 // ---------- TAB 1: candidate ----------
 
 function renderCandidateTab(){
   const race = getRace();
+  const nat = isNationalRace();
   const name = document.getElementById('candidateInput').value.trim();
   const topN = parseInt(document.getElementById('candTopN').value) || 15;
   const minVotes = parseInt(document.getElementById('candMinVotes').value) || 0;
@@ -664,7 +678,7 @@ function renderCandidateTab(){
       <div class="box"><div class="v">${cand.total.toLocaleString()}</div><div class="k">סה"כ קולות</div></div>
       <div class="box"><div class="v">${numSites}</div><div class="k">אתרים בהם קיבל קולות</div></div>
       <div class="box"><div class="v">${avgPct.toFixed(1)}%</div><div class="k">אחוז ממוצע באתר</div></div>
-      <div class="box"><div class="v">${best ? best.pct.toFixed(1)+'%' : '-'}</div><div class="k">האחוז הגבוה ביותר (${best?escapeHtml(best.site):''})</div></div>
+      <div class="box"><div class="v">${best ? best.pct.toFixed(1)+'%' : '-'}${best?maxBadge(best.pct, nat):''}</div><div class="k">האחוז הגבוה ביותר (${best?escapeHtml(best.site):''})</div></div>
     </div>
   `;
 
@@ -675,11 +689,11 @@ function renderCandidateTab(){
     <div class="two-col">
       <div class="card">
         <h3>המקומות המובילים — במספרים <span class="hint">(סה"כ קולות למועמד)</span></h3>
-        <div class="table-scroll">${candTable(byVotes,'votes')}</div>
+        <div class="table-scroll">${candTable(byVotes, nat)}</div>
       </div>
       <div class="card">
-        <h3>המקומות המובילים — באחוזים <span class="hint">(מסך הקולות באתר, מתוך אתרים עם ${minVotes}+ קולות)</span></h3>
-        <div class="table-scroll">${candTable(byPct,'pct')}</div>
+        <h3>המקומות המובילים — באחוזים <span class="hint">(מתוך אתרים עם ${minVotes}+ קולות${nat?', מקסימום תיאורטי 8.3%':''})</span></h3>
+        <div class="table-scroll">${candTable(byPct, nat)}</div>
       </div>
     </div>
   `;
@@ -698,7 +712,10 @@ function renderCandidateTab(){
       const td = document.createElement('td');
       td.colSpan = 4;
       td.innerHTML = `<div class="site-leaders"><b>${escapeHtml(siteName)}</b> — 5 המועמדים המובילים: ` +
-        leaders.map(([n,v],i)=>`${i+1}. ${escapeHtml(n)} (${v.toLocaleString()}, ${fmtPct(v, st.total)})`).join(' &nbsp;·&nbsp; ') +
+        leaders.map(([n,v],i)=>{
+          const p = pct(v, st.total);
+          return `${i+1}. ${escapeHtml(n)} (${v.toLocaleString()}, ${p.toFixed(1)}%${maxBadge(p, nat)})`;
+        }).join(' &nbsp;·&nbsp; ') +
         `</div>`;
       row.appendChild(td);
       tr.after(row);
@@ -706,7 +723,7 @@ function renderCandidateTab(){
   });
 }
 
-function candTable(entries, sortKind){
+function candTable(entries, nat){
   if(entries.length===0) return '<div class="empty-hint">אין נתונים</div>';
   let rows = entries.map((e,i)=>{
     const rankClass = i===0?'r1':i===1?'r2':i===2?'r3':'';
@@ -717,13 +734,13 @@ function candTable(entries, sortKind){
       <td>
         <div style="display:flex;align-items:center;gap:6px;">
           <div class="bar-wrap" style="max-width:70px;"><div class="bar-fill" style="width:${Math.min(e.pct,100)}%"></div></div>
-          <span>${e.pct.toFixed(1)}%</span>
+          <span>${e.pct.toFixed(1)}%${maxBadge(e.pct, nat)}</span>
         </div>
       </td>
     </tr>`;
   }).join('');
   return `<table>
-    <thead><tr><th>#</th><th>אתר</th><th>קולות</th><th>אחוז מהאתר</th></tr></thead>
+    <thead><tr><th>#</th><th>אתר</th><th>קולות</th><th>אחוז מהקולות</th></tr></thead>
     <tbody>${rows}</tbody>
   </table>`;
 }
@@ -732,6 +749,7 @@ function candTable(entries, sortKind){
 
 function renderSiteTab(){
   const race = getRace();
+  const nat = isNationalRace();
   const name = document.getElementById('siteInput').value.trim();
   const st = race.sites.get(name);
   const wrap = document.getElementById('siteResults');
@@ -752,7 +770,7 @@ function renderSiteTab(){
       <td>
         <div style="display:flex;align-items:center;gap:6px;">
           <div class="bar-wrap" style="max-width:140px;"><div class="bar-fill" style="width:${Math.min(p,100)}%"></div></div>
-          <span>${p.toFixed(1)}%</span>
+          <span>${p.toFixed(1)}%${maxBadge(p, nat)}</span>
         </div>
       </td>
     </tr>`;
@@ -760,10 +778,10 @@ function renderSiteTab(){
 
   wrap.innerHTML = `
     <div class="card">
-      <h3>${escapeHtml(name)} <span class="hint">— ${st.total.toLocaleString()} קולות סה"כ, ${ranked.length} מועמדים</span></h3>
+      <h3>${escapeHtml(name)} <span class="hint">— ${st.total.toLocaleString()} קולות סה"כ, ${ranked.length} מועמדים${nat?' · מקסימום תיאורטי לקול: 8.3%':''}</span></h3>
       <div class="table-scroll">
         <table>
-          <thead><tr><th>#</th><th>מועמד</th><th>קולות</th><th>אחוז</th></tr></thead>
+          <thead><tr><th>#</th><th>מועמד</th><th>קולות</th><th>אחוז מהקולות</th></tr></thead>
           <tbody>${rows}</tbody>
         </table>
       </div>

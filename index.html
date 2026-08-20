@@ -272,6 +272,7 @@
     </div>
     <div class="summary-stats" id="summaryStats"></div>
   </div>
+  <div id="raceNote" style="display:none;background:#fff8e6;border:1px solid #f0dca0;border-radius:10px;padding:8px 14px;font-size:12px;color:#6b5a20;margin-bottom:16px;"></div>
 
   <div class="tabs">
     <button class="tab-btn active" data-tab="candidate">לפי מועמד</button>
@@ -322,25 +323,23 @@
   <!-- ===== TAB 3: MATRIX ===== -->
   <div class="tab-panel" id="tab-matrix">
     <div class="card">
-      <h3>מטריצת מועמדים × אתרים <span class="hint">— זיהוי מי הוביל איפה, במספרים ובאחוזים</span></h3>
+      <h3>מטריצת קורלציה בין מועמדים <span class="hint">— עד כמה שני מועמדים "הצליחו יחד" באותם אתרים (מועמד בשורות ובעמודות)</span></h3>
+      <p style="color:var(--sub);font-size:12.5px;margin-top:-4px;">
+        לכל זוג מועמדים מחושב מקדם קורלציה של פירסון על פני כל האתרים (בין 1- ל-1). ערך קרוב ל-1 = המועמדים חזקים ביחד באותם אתרים (בלוק הצבעה משותף); קרוב ל-1- = כשאחד חזק השני חלש (מתחרים על אותם קולות); קרוב ל-0 = אין קשר.
+      </p>
       <div class="matrix-controls">
         <div class="field">
           <label>כמות מועמדים (לפי סה"כ קולות)</label>
-          <input type="number" id="matrixTopCand" value="15" min="2" max="80">
+          <input type="number" id="matrixTopCand" value="20" min="2" max="60">
         </div>
         <div class="field">
-          <label>כמות אתרים (לפי סה"כ קולות)</label>
-          <input type="number" id="matrixTopSites" value="15" min="2" max="80">
-        </div>
-        <div class="field">
-          <label>הצגה בתאים</label>
+          <label>קורלציה לפי</label>
           <select id="matrixMetric">
-            <option value="pct">אחוזים</option>
-            <option value="votes">מספרים</option>
-            <option value="both">שניהם</option>
+            <option value="pct">אחוזים באתר</option>
+            <option value="votes">מספרי קולות</option>
           </select>
         </div>
-        <button class="btn" id="matrixRenderBtn">עדכן מטריצה</button>
+        <button class="btn" id="matrixRenderBtn">חשב קורלציה</button>
       </div>
       <div class="picker-row">
         <div class="field">
@@ -348,22 +347,16 @@
           <input type="text" id="pinCandInput" list="candidateOptions" placeholder="הקלידו והוסיפו">
         </div>
         <button class="btn secondary" id="pinCandBtn">הוסף מועמד</button>
-        <div class="field">
-          <label>הוספת אתר ידנית</label>
-          <input type="text" id="pinSiteInput" list="siteOptions" placeholder="הקלידו והוסיפו">
-        </div>
-        <button class="btn secondary" id="pinSiteBtn">הוסף אתר</button>
       </div>
       <div class="chips" id="pinnedCandChips"></div>
-      <div class="chips" id="pinnedSiteChips"></div>
     </div>
 
     <div class="card">
-      <div id="matrixWrap"><div class="empty-hint">לחצו "עדכן מטריצה" כדי להציג</div></div>
+      <div id="matrixWrap"><div class="empty-hint">לחצו "חשב קורלציה" כדי להציג</div></div>
       <div class="legend">
-        <span><i style="background:#fdf2c9"></i> מוביל באתר (מקום 1)</span>
-        <span><i style="background:#eef0f3"></i> מקום 2</span>
-        <span><i style="background:#f7e9dc"></i> מקום 3</span>
+        <span><i style="background:#1c4fa0"></i> קורלציה חיובית חזקה (קרוב ל-1)</span>
+        <span><i style="background:#eef1f6"></i> אין קשר (קרוב ל-0)</span>
+        <span><i style="background:#c0392b"></i> קורלציה שלילית חזקה (קרוב ל-1-)</span>
       </div>
     </div>
   </div>
@@ -519,14 +512,10 @@ function setupUI(){
 
   document.getElementById('siteInput').addEventListener('change', renderSiteTab);
 
-  document.getElementById('matrixRenderBtn').addEventListener('click', renderMatrix);
+  document.getElementById('matrixRenderBtn').addEventListener('click', renderCorrelationMatrix);
   document.getElementById('pinCandBtn').addEventListener('click', ()=>{
-    addPin('cand', document.getElementById('pinCandInput').value.trim());
+    addPin(document.getElementById('pinCandInput').value.trim());
     document.getElementById('pinCandInput').value='';
-  });
-  document.getElementById('pinSiteBtn').addEventListener('click', ()=>{
-    addPin('site', document.getElementById('pinSiteInput').value.trim());
-    document.getElementById('pinSiteInput').value='';
   });
 
   document.getElementById('retryBtn').addEventListener('click', ()=>{
@@ -558,11 +547,9 @@ function populateRaceSelect(){
 }
 
 let pinnedCand = new Set();
-let pinnedSite = new Set();
 
 function onRaceChange(){
   pinnedCand = new Set();
-  pinnedSite = new Set();
   renderPins();
   const race = getRace();
 
@@ -571,6 +558,14 @@ function onRaceChange(){
     <div class="stat-chip"><div class="n">${race.sites.size}</div><div class="l">אתרים</div></div>
     <div class="stat-chip"><div class="n">${race.totalVotes.toLocaleString()}</div><div class="l">סה"כ קולות</div></div>
   `;
+
+  const noteEl = document.getElementById('raceNote');
+  if(currentRaceKey === 'ארצית'){
+    noteEl.style.display = 'block';
+    noteEl.textContent = 'שימו לב: בטופס ההצבעה לרשימה הארצית כל מצביע בחר עד 12 מועמדים, כך שהאחוז המקסימלי התיאורטי של מועמד באתר (מתוך כלל הקולות/הסימונים) הוא כ-8.3% (1/12) — מועמד שמקבל אחוז גבוה יחסית לכך זכה לתמיכה רחבה מאוד.';
+  } else {
+    noteEl.style.display = 'none';
+  }
   setStatus(`<span class="status-pill">${rowCount.toLocaleString()} שורות נטענו</span><button class="refresh-btn" id="refreshBtn2">רענון</button>`);
   document.getElementById('refreshBtn2').addEventListener('click', ()=>{
     document.getElementById('app').style.display='none';
@@ -589,7 +584,7 @@ function onRaceChange(){
 
   renderCandidateTab();
   renderSiteTab();
-  document.getElementById('matrixWrap').innerHTML = '<div class="empty-hint">לחצו "עדכן מטריצה" כדי להציג</div>';
+  document.getElementById('matrixWrap').innerHTML = '<div class="empty-hint">לחצו "חשב קורלציה" כדי להציג</div>';
 }
 
 function escapeHtml(s){
@@ -737,18 +732,12 @@ function renderSiteTab(){
   `;
 }
 
-// ---------- TAB 3: matrix ----------
+// ---------- TAB 3: candidate x candidate correlation matrix ----------
 
-function addPin(kind, name){
+function addPin(name){
   const race = getRace();
-  if(!name) return;
-  if(kind==='cand'){
-    if(!race.candidates.has(name)) return;
-    pinnedCand.add(name);
-  }else{
-    if(!race.sites.has(name)) return;
-    pinnedSite.add(name);
-  }
+  if(!name || !race.candidates.has(name)) return;
+  pinnedCand.add(name);
   renderPins();
 }
 
@@ -756,61 +745,89 @@ function renderPins(){
   document.getElementById('pinnedCandChips').innerHTML = [...pinnedCand].map(n=>
     `<span class="chip">${escapeHtml(n)}<button data-n="${escapeHtml(n)}" class="rm-cand">✕</button></span>`
   ).join('');
-  document.getElementById('pinnedSiteChips').innerHTML = [...pinnedSite].map(n=>
-    `<span class="chip">${escapeHtml(n)}<button data-n="${escapeHtml(n)}" class="rm-site">✕</button></span>`
-  ).join('');
   document.querySelectorAll('.rm-cand').forEach(b=>b.addEventListener('click', e=>{ pinnedCand.delete(e.target.dataset.n); renderPins(); }));
-  document.querySelectorAll('.rm-site').forEach(b=>b.addEventListener('click', e=>{ pinnedSite.delete(e.target.dataset.n); renderPins(); }));
 }
 
-function renderMatrix(){
-  const race = getRace();
-  const topCandN = parseInt(document.getElementById('matrixTopCand').value) || 15;
-  const topSiteN = parseInt(document.getElementById('matrixTopSites').value) || 15;
-  const metric = document.getElementById('matrixMetric').value;
+// Pearson correlation coefficient between two equal-length numeric arrays
+function pearson(x, y){
+  const n = x.length;
+  if(n < 2) return null;
+  let mx=0, my=0;
+  for(let i=0;i<n;i++){ mx+=x[i]; my+=y[i]; }
+  mx/=n; my/=n;
+  let num=0, dx2=0, dy2=0;
+  for(let i=0;i<n;i++){
+    const dx = x[i]-mx, dy = y[i]-my;
+    num += dx*dy; dx2 += dx*dx; dy2 += dy*dy;
+  }
+  if(dx2===0 || dy2===0) return null;
+  return num / Math.sqrt(dx2*dy2);
+}
 
-  let candList = sortedCandidates(race).slice(0, topCandN).map(c=>c.name);
+function corrColor(r){
+  if(r===null) return '#f7f7f7';
+  const t = Math.min(Math.abs(r), 1);
+  const light = 96 - t*46; // 96% (near white) down to 50%
+  if(r >= 0) return `hsl(216, 65%, ${light}%)`;   // blue for positive
+  return `hsl(6, 65%, ${light}%)`;                 // red for negative
+}
+function corrTextColor(r){
+  if(r===null) return '#999';
+  return Math.abs(r) > 0.55 ? '#fff' : '#1b1f2a';
+}
+
+function renderCorrelationMatrix(){
+  const race = getRace();
+  const topN = Math.max(2, Math.min(60, parseInt(document.getElementById('matrixTopCand').value) || 20));
+  const metric = document.getElementById('matrixMetric').value; // 'votes' | 'pct'
+
+  let candList = sortedCandidates(race).slice(0, topN).map(c=>c.name);
   for(const n of pinnedCand) if(!candList.includes(n)) candList.push(n);
 
-  let siteList = sortedSites(race).slice(0, topSiteN).map(s=>s.name);
-  for(const n of pinnedSite) if(!siteList.includes(n)) siteList.push(n);
-
-  if(candList.length===0 || siteList.length===0){
-    document.getElementById('matrixWrap').innerHTML = '<div class="empty-hint">אין נתונים להצגה</div>';
+  if(candList.length < 2){
+    document.getElementById('matrixWrap').innerHTML = '<div class="empty-hint">צריך לפחות 2 מועמדים</div>';
     return;
   }
 
-  // header row with leader per site
-  let headerHtml = '<th></th>' + siteList.map(siteName=>{
-    const st = race.sites.get(siteName);
-    const leader = [...st.candidates.entries()].sort((a,b)=>b[1]-a[1])[0];
-    const leaderLabel = leader ? `${leader[0].split(' ')[0]} ${fmtPct(leader[1], st.total)}` : '';
-    return `<th title="${escapeHtml(siteName)}">${escapeHtml(siteName)}<span class="site-sub">מוביל: ${escapeHtml(leaderLabel)}</span></th>`;
-  }).join('');
+  const siteList = sortedSites(race); // all sites = the observations for correlation
+  const siteNames = siteList.map(s=>s.name);
 
-  let bodyHtml = candList.map(candName=>{
-    const cand = race.candidates.get(candName);
-    const cells = siteList.map(siteName=>{
+  // build a vector (votes or pct) per candidate, aligned to siteNames order
+  const vectors = new Map();
+  for(const name of candList){
+    const cand = race.candidates.get(name);
+    const vec = siteNames.map(siteName=>{
       const st = race.sites.get(siteName);
-      const votes = cand ? (cand.sites.get(siteName) || 0) : 0;
-      const p = pct(votes, st.total);
-      // rank of this candidate at this site
-      const ranked = [...st.candidates.entries()].sort((a,b)=>b[1]-a[1]);
-      const rankIdx = ranked.findIndex(([n])=>n===candName);
-      let cls = '';
-      if(votes===0) cls='zero';
-      else if(rankIdx===0) cls='lead1';
-      else if(rankIdx===1) cls='lead2';
-      else if(rankIdx===2) cls='lead3';
+      const v = cand ? (cand.sites.get(siteName) || 0) : 0;
+      return metric === 'pct' ? pct(v, st.total) : v;
+    });
+    vectors.set(name, vec);
+  }
 
-      let label;
-      if(metric==='votes') label = votes.toLocaleString();
-      else if(metric==='pct') label = votes>0 ? p.toFixed(1)+'%' : '-';
-      else label = votes>0 ? `${votes.toLocaleString()} (${p.toFixed(1)}%)` : '-';
+  // compute pairwise correlations
+  const corr = new Map(); // "a|||b" -> r
+  for(let i=0;i<candList.length;i++){
+    for(let j=i;j<candList.length;j++){
+      const a = candList[i], b = candList[j];
+      const r = (a===b) ? 1 : pearson(vectors.get(a), vectors.get(b));
+      corr.set(a+'|||'+b, r);
+      corr.set(b+'|||'+a, r);
+    }
+  }
 
-      return `<td class="${cls}">${label}</td>`;
+  const headerHtml = '<th></th>' + candList.map(n=>
+    `<th title="${escapeHtml(n)}">${escapeHtml(n)}</th>`
+  ).join('');
+
+  const bodyHtml = candList.map(a=>{
+    const cells = candList.map(b=>{
+      const r = corr.get(a+'|||'+b);
+      const label = (a===b) ? '—' : (r===null ? 'N/A' : r.toFixed(2));
+      const bg = (a===b) ? '#eef1f6' : corrColor(r);
+      const fg = (a===b) ? '#999' : corrTextColor(r);
+      return `<td style="background:${bg};color:${fg};">${label}</td>`;
     }).join('');
-    return `<tr><th>${escapeHtml(candName)} <span style="color:var(--sub);font-weight:400;font-size:10.5px;">${cand?cand.total.toLocaleString():0}</span></th>${cells}</tr>`;
+    return `<tr><th>${escapeHtml(a)}</th>${cells}</tr>`;
   }).join('');
 
   document.getElementById('matrixWrap').innerHTML = `

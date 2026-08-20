@@ -277,7 +277,8 @@
   <div class="tabs">
     <button class="tab-btn active" data-tab="candidate">לפי מועמד</button>
     <button class="tab-btn" data-tab="site">לפי אתר הצבעה</button>
-    <button class="tab-btn" data-tab="matrix">מטריצת מובילים</button>
+    <button class="tab-btn" data-tab="sitecount">מספר מועמדים לפי אתר</button>
+    <button class="tab-btn" data-tab="matrix">קורלציה בין מועמדים</button>
   </div>
 
   <!-- ===== TAB 1: CANDIDATE ===== -->
@@ -318,6 +319,38 @@
       </div>
     </div>
     <div id="siteResults"></div>
+  </div>
+
+  <!-- ===== TAB 2b: CANDIDATE COUNT PER SITE (national list only) ===== -->
+  <div class="tab-panel" id="tab-sitecount">
+    <div class="card">
+      <h3>מספר מועמדים לפי אתר <span class="hint">— תמיד לפי הרשימה הארצית בלבד (בלי מחוזות)</span></h3>
+      <div class="picker-row">
+        <div class="field">
+          <label>סף קולות מינימלי כדי להיחשב "מועמד שקיבל קולות"</label>
+          <input type="number" id="sitecountMinVotes" value="1" min="1">
+        </div>
+        <div class="field">
+          <label>מספר מקומות להצגה בכל טבלה</label>
+          <input type="number" id="sitecountTopN" value="15" min="3" max="100">
+        </div>
+        <div class="field">
+          <label>סינון לפי שם אתר (בטבלה המלאה)</label>
+          <input type="text" id="sitecountFilter" placeholder="הקלידו לסינון...">
+        </div>
+        <div class="field">
+          <label>מיון הטבלה המלאה</label>
+          <select id="sitecountSort">
+            <option value="countDesc">מספר מועמדים — מהרבה למעט</option>
+            <option value="countAsc">מספר מועמדים — ממעט להרבה</option>
+            <option value="votesDesc">סה"כ קולות — מהרבה למעט</option>
+            <option value="nameAsc">שם אתר — א'-ב'</option>
+          </select>
+        </div>
+      </div>
+      <div id="sitecountStats"></div>
+    </div>
+    <div id="sitecountResults"></div>
   </div>
 
   <!-- ===== TAB 3: MATRIX ===== -->
@@ -512,6 +545,11 @@ function setupUI(){
 
   document.getElementById('siteInput').addEventListener('change', renderSiteTab);
 
+  document.getElementById('sitecountMinVotes').addEventListener('change', renderSiteCountTab);
+  document.getElementById('sitecountTopN').addEventListener('change', renderSiteCountTab);
+  document.getElementById('sitecountFilter').addEventListener('input', renderSiteCountTab);
+  document.getElementById('sitecountSort').addEventListener('change', renderSiteCountTab);
+
   document.getElementById('matrixRenderBtn').addEventListener('click', renderCorrelationMatrix);
   document.getElementById('pinCandBtn').addEventListener('click', ()=>{
     addPin(document.getElementById('pinCandInput').value.trim());
@@ -584,6 +622,7 @@ function onRaceChange(){
 
   renderCandidateTab();
   renderSiteTab();
+  renderSiteCountTab();
   document.getElementById('matrixWrap').innerHTML = '<div class="empty-hint">לחצו "חשב קורלציה" כדי להציג</div>';
 }
 
@@ -730,6 +769,93 @@ function renderSiteTab(){
       </div>
     </div>
   `;
+}
+
+// ---------- TAB 2b: candidate count per site (national list only) ----------
+
+function nationalRace(){ return races.get('ארצית'); }
+
+function renderSiteCountTab(){
+  const race = nationalRace();
+  const statsWrap = document.getElementById('sitecountStats');
+  const wrap = document.getElementById('sitecountResults');
+
+  if(!race){
+    statsWrap.innerHTML='';
+    wrap.innerHTML = '<div class="empty-hint">לא נמצאו נתוני רשימה ארצית בגיליון</div>';
+    return;
+  }
+
+  const minVotes = Math.max(1, parseInt(document.getElementById('sitecountMinVotes').value) || 1);
+  const topN = parseInt(document.getElementById('sitecountTopN').value) || 15;
+  const filterText = document.getElementById('sitecountFilter').value.trim();
+  const sortMode = document.getElementById('sitecountSort').value;
+
+  const items = [...race.sites.values()].map(st=>{
+    let count = 0;
+    for(const v of st.candidates.values()) if(v >= minVotes) count++;
+    return { site: st.name, count, total: st.total };
+  });
+
+  const counts = items.map(i=>i.count);
+  const avg = counts.reduce((a,b)=>a+b,0) / (counts.length || 1);
+  const max = Math.max(...counts);
+  const min = Math.min(...counts);
+
+  statsWrap.innerHTML = `
+    <div class="cand-stats">
+      <div class="box"><div class="v">${items.length}</div><div class="k">אתרים (רשימה ארצית)</div></div>
+      <div class="box"><div class="v">${avg.toFixed(1)}</div><div class="k">ממוצע מועמדים לאתר</div></div>
+      <div class="box"><div class="v">${max}</div><div class="k">המקסימום</div></div>
+      <div class="box"><div class="v">${min}</div><div class="k">המינימום</div></div>
+    </div>
+  `;
+
+  const mostList = items.slice().sort((a,b)=> b.count-a.count || b.total-a.total).slice(0, topN);
+  const leastList = items.slice().sort((a,b)=> a.count-b.count || b.total-a.total).slice(0, topN);
+
+  let fullItems = items;
+  if(filterText) fullItems = fullItems.filter(i=>i.site.includes(filterText));
+  fullItems = fullItems.slice().sort((a,b)=>{
+    if(sortMode==='countAsc') return a.count-b.count;
+    if(sortMode==='votesDesc') return b.total-a.total;
+    if(sortMode==='nameAsc') return a.site.localeCompare(b.site,'he');
+    return b.count-a.count; // countDesc default
+  });
+
+  wrap.innerHTML = `
+    <div class="two-col">
+      <div class="card">
+        <h3>הכי הרבה מועמדים באתר</h3>
+        <div class="table-scroll">${siteCountTable(mostList)}</div>
+      </div>
+      <div class="card">
+        <h3>הכי מעט מועמדים באתר</h3>
+        <div class="table-scroll">${siteCountTable(leastList)}</div>
+      </div>
+    </div>
+    <div class="card">
+      <h3>כל האתרים <span class="hint">(${fullItems.length} מתוך ${items.length})</span></h3>
+      <div class="table-scroll" style="max-height:420px;">${siteCountTable(fullItems)}</div>
+    </div>
+  `;
+}
+
+function siteCountTable(items){
+  if(items.length===0) return '<div class="empty-hint">אין נתונים</div>';
+  const rows = items.map((it,i)=>{
+    const rankClass = i===0?'r1':i===1?'r2':i===2?'r3':'';
+    return `<tr>
+      <td><span class="rank-badge ${rankClass}">${i+1}</span></td>
+      <td>${escapeHtml(it.site)}</td>
+      <td>${it.count}</td>
+      <td>${it.total.toLocaleString()}</td>
+    </tr>`;
+  }).join('');
+  return `<table>
+    <thead><tr><th>#</th><th>אתר</th><th>מועמדים שקיבלו קולות</th><th>סה"כ קולות באתר</th></tr></thead>
+    <tbody>${rows}</tbody>
+  </table>`;
 }
 
 // ---------- TAB 3: candidate x candidate correlation matrix ----------

@@ -1,0 +1,849 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>דשבורד תוצאות פריימריז הליכוד</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<style>
+  :root{
+    --bg:#f4f5f8;
+    --card:#ffffff;
+    --ink:#1b1f2a;
+    --sub:#6b7280;
+    --accent:#1c4fa0;
+    --accent-2:#12b3a6;
+    --line:#e5e7eb;
+    --gold:#f4c542;
+    --silver:#c7ccd6;
+    --bronze:#d99a5b;
+    --danger:#c0392b;
+    --radius:12px;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--ink);
+    font-family:"Segoe UI","Arial Hebrew","Assistant",Arial,sans-serif;
+    font-size:14px;
+  }
+  header{
+    background:linear-gradient(90deg,var(--accent),#15366b);
+    color:#fff;
+    padding:18px 22px;
+    display:flex;
+    flex-wrap:wrap;
+    align-items:center;
+    justify-content:space-between;
+    gap:12px;
+  }
+  header h1{
+    font-size:20px;
+    margin:0;
+    font-weight:700;
+  }
+  header .sub{
+    font-size:12px;
+    opacity:.85;
+    margin-top:2px;
+  }
+  .status-bar{
+    display:flex;
+    gap:16px;
+    flex-wrap:wrap;
+    align-items:center;
+    font-size:12.5px;
+  }
+  .status-pill{
+    background:rgba(255,255,255,.14);
+    padding:6px 12px;
+    border-radius:20px;
+  }
+  .refresh-btn{
+    background:rgba(255,255,255,.18);
+    border:1px solid rgba(255,255,255,.35);
+    color:#fff;
+    padding:6px 14px;
+    border-radius:20px;
+    cursor:pointer;
+    font-size:12.5px;
+  }
+  .refresh-btn:hover{ background:rgba(255,255,255,.3); }
+
+  #loading, #errorBox{
+    max-width:900px;
+    margin:60px auto;
+    text-align:center;
+    padding:30px;
+  }
+  .spinner{
+    width:34px;height:34px;border-radius:50%;
+    border:4px solid #d8dee9;border-top-color:var(--accent);
+    margin:0 auto 14px;
+    animation:spin 1s linear infinite;
+  }
+  @keyframes spin{to{transform:rotate(360deg);}}
+  #errorBox{ display:none; }
+  #errorBox .card{ background:var(--card); border-radius:var(--radius); padding:26px; box-shadow:0 1px 4px rgba(0,0,0,.06); }
+  #errorBox h2{ color:var(--danger); margin-top:0;}
+  .dropzone{
+    margin-top:18px;
+    border:2px dashed #cbd5e1;
+    border-radius:10px;
+    padding:26px;
+    color:var(--sub);
+    cursor:pointer;
+    transition:.15s;
+  }
+  .dropzone.drag{ background:#eef4ff; border-color:var(--accent); }
+  #fileInput{ display:none; }
+
+  #app{ display:none; max-width:1300px; margin:0 auto; padding:18px 18px 60px; }
+
+  .race-bar{
+    background:var(--card);
+    border-radius:var(--radius);
+    padding:14px 16px;
+    display:flex;
+    flex-wrap:wrap;
+    gap:14px;
+    align-items:center;
+    box-shadow:0 1px 3px rgba(0,0,0,.06);
+    margin-bottom:16px;
+  }
+  .race-bar label{ font-size:12.5px; color:var(--sub); display:block; margin-bottom:4px; }
+  select, input[type=text], input[type=number]{
+    font-family:inherit;
+    font-size:13.5px;
+    padding:8px 10px;
+    border-radius:8px;
+    border:1px solid var(--line);
+    background:#fff;
+    color:var(--ink);
+  }
+  select:focus, input:focus{ outline:2px solid #bcd2f5; }
+
+  .summary-stats{ display:flex; gap:10px; flex-wrap:wrap; margin-inline-start:auto; }
+  .stat-chip{ background:#eef3fb; border-radius:8px; padding:8px 12px; text-align:center; min-width:84px; }
+  .stat-chip .n{ font-weight:700; font-size:15px; color:var(--accent); }
+  .stat-chip .l{ font-size:10.5px; color:var(--sub); }
+
+  .tabs{ display:flex; gap:6px; margin-bottom:16px; border-bottom:2px solid var(--line); }
+  .tab-btn{
+    padding:10px 18px;
+    background:none;
+    border:none;
+    cursor:pointer;
+    font-size:14px;
+    font-weight:600;
+    color:var(--sub);
+    border-bottom:3px solid transparent;
+    margin-bottom:-2px;
+  }
+  .tab-btn.active{ color:var(--accent); border-color:var(--accent); }
+  .tab-panel{ display:none; }
+  .tab-panel.active{ display:block; }
+
+  .card{ background:var(--card); border-radius:var(--radius); box-shadow:0 1px 3px rgba(0,0,0,.06); padding:16px; margin-bottom:16px; }
+  .card h3{ margin:0 0 12px; font-size:15px; }
+  .card h3 .hint{ font-weight:400; color:var(--sub); font-size:11.5px; }
+
+  .picker-row{ display:flex; gap:14px; flex-wrap:wrap; align-items:flex-end; margin-bottom:6px; }
+  .picker-row .field{ display:flex; flex-direction:column; gap:4px; }
+  .picker-row input[type=text]{ min-width:260px; }
+
+  .empty-hint{ color:var(--sub); padding:30px; text-align:center; font-size:13px; }
+
+  .cand-stats{ display:flex; gap:12px; flex-wrap:wrap; margin:14px 0 4px; }
+  .cand-stats .box{ background:#f8f9fc; border:1px solid var(--line); border-radius:10px; padding:10px 14px; min-width:120px; }
+  .cand-stats .box .v{ font-size:18px; font-weight:700; color:var(--accent); }
+  .cand-stats .box .k{ font-size:11px; color:var(--sub); }
+
+  .two-col{ display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+  @media (max-width:900px){ .two-col{ grid-template-columns:1fr; } }
+
+  table{ width:100%; border-collapse:collapse; font-size:13px; }
+  thead th{
+    text-align:right;
+    background:#f1f4f9;
+    padding:8px 10px;
+    font-size:11.5px;
+    color:var(--sub);
+    font-weight:600;
+    position:sticky; top:0;
+  }
+  tbody td{ padding:7px 10px; border-bottom:1px solid #f0f1f4; vertical-align:middle; }
+  tbody tr:hover{ background:#f7f9fc; }
+  tbody tr.expand-row{ cursor:pointer; }
+  .bar-wrap{ background:#eef1f6; border-radius:5px; height:8px; width:100%; overflow:hidden; }
+  .bar-fill{ height:100%; background:linear-gradient(90deg,var(--accent-2),var(--accent)); }
+  .rank-badge{
+    display:inline-flex; align-items:center; justify-content:center;
+    width:22px; height:22px; border-radius:50%;
+    font-size:11px; font-weight:700; color:#fff; background:#9aa4b2;
+  }
+  .rank-badge.r1{ background:var(--gold); color:#5b4400; }
+  .rank-badge.r2{ background:var(--silver); color:#374151; }
+  .rank-badge.r3{ background:var(--bronze); color:#4a2c00; }
+
+  .site-leaders{ margin-top:6px; padding:8px 10px; background:#f8f9fc; border-radius:8px; font-size:12px; color:var(--sub); }
+  .site-leaders b{ color:var(--ink); }
+  .subtable{ margin-top:4px; }
+  .subtable table{ font-size:12px; }
+  .subtable thead th{ background:#eef1f6; }
+
+  .table-scroll{ overflow:auto; max-height:520px; border:1px solid var(--line); border-radius:8px; }
+
+  .chips{ display:flex; gap:6px; flex-wrap:wrap; margin-top:6px; }
+  .chip{
+    background:#eef3fb; color:var(--accent); border-radius:16px;
+    padding:4px 10px 4px 6px; font-size:12px; display:flex; align-items:center; gap:6px;
+  }
+  .chip button{ border:none; background:#dbe6f7; color:var(--accent); border-radius:50%; width:16px; height:16px; cursor:pointer; font-size:10px; line-height:1; }
+
+  .btn{ background:var(--accent); color:#fff; border:none; padding:8px 16px; border-radius:8px; cursor:pointer; font-size:13px; font-weight:600; }
+  .btn:hover{ background:#173d80; }
+  .btn.secondary{ background:#eef1f6; color:var(--ink); }
+  .btn.secondary:hover{ background:#e2e6ee; }
+
+  .matrix-controls{ display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end; margin-bottom:10px; }
+  .matrix-controls .field{ display:flex; flex-direction:column; gap:4px; }
+  .matrix-controls input[type=number]{ width:80px; }
+
+  #matrixWrap{ overflow:auto; max-height:640px; border:1px solid var(--line); border-radius:8px; }
+  #matrixTable{ border-collapse:separate; border-spacing:0; }
+  #matrixTable th, #matrixTable td{ white-space:nowrap; text-align:center; padding:6px 9px; font-size:12px; }
+  #matrixTable thead th{
+    position:sticky; top:0; z-index:2; background:#f1f4f9;
+    max-width:120px; overflow:hidden; text-overflow:ellipsis;
+  }
+  #matrixTable thead th .site-sub{ display:block; font-weight:400; color:var(--sub); font-size:10px; }
+  #matrixTable tbody th{
+    position:sticky; right:0; z-index:1; background:#fff;
+    text-align:right; border-left:1px solid var(--line); max-width:160px; overflow:hidden; text-overflow:ellipsis;
+  }
+  #matrixTable td.lead1{ background:#fdf2c9; font-weight:700; }
+  #matrixTable td.lead2{ background:#eef0f3; }
+  #matrixTable td.lead3{ background:#f7e9dc; }
+  #matrixTable td.zero{ color:#c9ccd3; }
+  .legend{ display:flex; gap:14px; font-size:11.5px; color:var(--sub); margin-top:8px; flex-wrap:wrap; }
+  .legend span{ display:inline-flex; align-items:center; gap:5px; }
+  .legend i{ width:12px; height:12px; border-radius:3px; display:inline-block; }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>🗳️ דשבורד תוצאות פריימריז הליכוד</h1>
+    <div class="sub">ניתוח לפי מועמד, לפי אתר הצבעה, ומטריצת מובילים</div>
+  </div>
+  <div class="status-bar" id="statusBar"></div>
+</header>
+
+<div id="loading">
+  <div class="spinner"></div>
+  <div>טוען נתונים מהגיליון...</div>
+</div>
+
+<div id="errorBox">
+  <div class="card">
+    <h2>לא הצלחתי לטעון את הנתונים אוטומטית</h2>
+    <p id="errorExplain">יש חסימת גישה (CORS) בין הדפדפן לגיליון.</p>
+    <p style="color:var(--sub);font-size:12.5px;">
+      הפתרון המהיר ביותר: השתמשו בהעלאת קובץ CSV למטה (זה תמיד עובד, גם בלי אינטרנט לגיליון).<br>
+      אם רוצים שהטעינה האוטומטית תעבוד תמיד: העלו את הקובץ ל-GitHub Pages (או כל אחסון עם כתובת https אמיתית) במקום לפתוח אותו ישירות מהדיסק — כפי שנעשה בדשבורדים אחרים.
+    </p>
+    <button class="btn" id="retryBtn">נסה שוב</button>
+    <div class="dropzone" id="dropzone">
+      גררו לכאן קובץ CSV, או לחצו לבחירה
+      <input type="file" id="fileInput" accept=".csv,text/csv">
+    </div>
+  </div>
+</div>
+
+<div id="app">
+
+  <div class="race-bar">
+    <div class="field">
+      <label>סוג רשימה / מחוז</label>
+      <select id="raceSelect"></select>
+    </div>
+    <div class="summary-stats" id="summaryStats"></div>
+  </div>
+
+  <div class="tabs">
+    <button class="tab-btn active" data-tab="candidate">לפי מועמד</button>
+    <button class="tab-btn" data-tab="site">לפי אתר הצבעה</button>
+    <button class="tab-btn" data-tab="matrix">מטריצת מובילים</button>
+  </div>
+
+  <!-- ===== TAB 1: CANDIDATE ===== -->
+  <div class="tab-panel active" id="tab-candidate">
+    <div class="card">
+      <h3>בחירת מועמד</h3>
+      <div class="picker-row">
+        <div class="field">
+          <label>הקלידו שם מועמד</label>
+          <input type="text" id="candidateInput" list="candidateOptions" placeholder="לדוגמה: לוין יריב">
+          <datalist id="candidateOptions"></datalist>
+        </div>
+        <div class="field">
+          <label>מספר מקומות להצגה בכל טבלה</label>
+          <input type="number" id="candTopN" value="15" min="3" max="100">
+        </div>
+        <div class="field">
+          <label>סף מינימום קולות באתר (לטבלת האחוזים)</label>
+          <input type="number" id="candMinVotes" value="20" min="0">
+        </div>
+      </div>
+      <div id="candidateStatsWrap"></div>
+    </div>
+
+    <div id="candidateResults"></div>
+  </div>
+
+  <!-- ===== TAB 2: SITE ===== -->
+  <div class="tab-panel" id="tab-site">
+    <div class="card">
+      <h3>בחירת אתר הצבעה</h3>
+      <div class="picker-row">
+        <div class="field">
+          <label>הקלידו שם אתר</label>
+          <input type="text" id="siteInput" list="siteOptions" placeholder="לדוגמה: אופקים">
+          <datalist id="siteOptions"></datalist>
+        </div>
+      </div>
+    </div>
+    <div id="siteResults"></div>
+  </div>
+
+  <!-- ===== TAB 3: MATRIX ===== -->
+  <div class="tab-panel" id="tab-matrix">
+    <div class="card">
+      <h3>מטריצת מועמדים × אתרים <span class="hint">— זיהוי מי הוביל איפה, במספרים ובאחוזים</span></h3>
+      <div class="matrix-controls">
+        <div class="field">
+          <label>כמות מועמדים (לפי סה"כ קולות)</label>
+          <input type="number" id="matrixTopCand" value="15" min="2" max="80">
+        </div>
+        <div class="field">
+          <label>כמות אתרים (לפי סה"כ קולות)</label>
+          <input type="number" id="matrixTopSites" value="15" min="2" max="80">
+        </div>
+        <div class="field">
+          <label>הצגה בתאים</label>
+          <select id="matrixMetric">
+            <option value="pct">אחוזים</option>
+            <option value="votes">מספרים</option>
+            <option value="both">שניהם</option>
+          </select>
+        </div>
+        <button class="btn" id="matrixRenderBtn">עדכן מטריצה</button>
+      </div>
+      <div class="picker-row">
+        <div class="field">
+          <label>הוספת מועמד ידנית</label>
+          <input type="text" id="pinCandInput" list="candidateOptions" placeholder="הקלידו והוסיפו">
+        </div>
+        <button class="btn secondary" id="pinCandBtn">הוסף מועמד</button>
+        <div class="field">
+          <label>הוספת אתר ידנית</label>
+          <input type="text" id="pinSiteInput" list="siteOptions" placeholder="הקלידו והוסיפו">
+        </div>
+        <button class="btn secondary" id="pinSiteBtn">הוסף אתר</button>
+      </div>
+      <div class="chips" id="pinnedCandChips"></div>
+      <div class="chips" id="pinnedSiteChips"></div>
+    </div>
+
+    <div class="card">
+      <div id="matrixWrap"><div class="empty-hint">לחצו "עדכן מטריצה" כדי להציג</div></div>
+      <div class="legend">
+        <span><i style="background:#fdf2c9"></i> מוביל באתר (מקום 1)</span>
+        <span><i style="background:#eef0f3"></i> מקום 2</span>
+        <span><i style="background:#f7e9dc"></i> מקום 3</span>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+const CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQltZzZJMGh0chRhMg7dCVPgOGfENDR19vtuxhDn2jTq-wmECjPI76s3u9vQ29rLq4GpiHQSP0Ilwki/pub?gid=0&single=true&output=csv";
+
+const COL = {
+  candidate: "מועמד",
+  listType: "סוג רשימה",
+  district: "מחוז",
+  boothId: "מספר קלפי",
+  boothName: "שם קלפי",
+  site: "אתר",
+  votes: "מספר הצבעות"
+};
+
+let races = new Map();      // raceKey -> race object
+let currentRaceKey = null;
+let rowCount = 0;
+
+// ---------- Loading ----------
+
+function setStatus(html){
+  document.getElementById('statusBar').innerHTML = html;
+}
+
+async function init(){
+  try{
+    setStatus('<span class="status-pill">טוען...</span>');
+    const res = await fetch(CSV_URL + (CSV_URL.includes('?')?'&':'?') + '_=' + Date.now(), {cache:'no-store'});
+    if(!res.ok) throw new Error('HTTP ' + res.status);
+    const text = await res.text();
+    parseAndBuild(text);
+  }catch(err){
+    console.error(err);
+    showError();
+  }
+}
+
+function showError(){
+  document.getElementById('loading').style.display = 'none';
+  document.getElementById('errorBox').style.display = 'block';
+  const explain = document.getElementById('errorExplain');
+  if(window.location.protocol === 'file:'){
+    explain.textContent = 'זה קורה כי הקובץ נפתח ישירות מהדיסק (file://) — דפדפנים חוסמים בקשות רשת מקבצים מקומיים מטעמי אבטחה, גם כשהגיליון עצמו ציבורי.';
+  } else {
+    explain.textContent = 'יש חסימת גישה (CORS) בין הדפדפן לגיליון.';
+  }
+}
+
+function parseAndBuild(csvText){
+  Papa.parse(csvText, {
+    header:true,
+    skipEmptyLines:true,
+    complete: function(results){
+      try{
+        buildModel(results.data);
+        document.getElementById('loading').style.display='none';
+        document.getElementById('errorBox').style.display='none';
+        document.getElementById('app').style.display='block';
+        setupUI();
+      }catch(e){
+        console.error(e);
+        showError();
+      }
+    },
+    error: function(e){ console.error(e); showError(); }
+  });
+}
+
+// ---------- Model building ----------
+
+function buildModel(rows){
+  races = new Map();
+  rowCount = 0;
+
+  for(const row of rows){
+    const candidate = (row[COL.candidate]||'').trim();
+    const listType = (row[COL.listType]||'').trim();
+    const district = (row[COL.district]||'').trim();
+    const site = (row[COL.site]||'').trim();
+    const votesRaw = row[COL.votes];
+    const votes = Number(String(votesRaw).replace(/[^0-9.\-]/g,'')) || 0;
+
+    if(!candidate || !site) continue;
+    rowCount++;
+
+    const raceKey = listType === 'ארצית' ? 'ארצית' : ('מחוזית||' + district);
+    let race = races.get(raceKey);
+    if(!race){
+      race = {
+        key: raceKey,
+        listType: listType,
+        district: listType === 'ארצית' ? '' : district,
+        label: listType === 'ארצית' ? 'רשימה ארצית' : ('מחוזית — ' + district),
+        candidates: new Map(),   // name -> {total, sites: Map(site->votes)}
+        sites: new Map(),        // site -> {total, candidates: Map(name->votes)}
+        totalVotes: 0
+      };
+      races.set(raceKey, race);
+    }
+
+    race.totalVotes += votes;
+
+    let cand = race.candidates.get(candidate);
+    if(!cand){ cand = {name:candidate, total:0, sites:new Map()}; race.candidates.set(candidate, cand); }
+    cand.total += votes;
+    cand.sites.set(site, (cand.sites.get(site)||0) + votes);
+
+    let st = race.sites.get(site);
+    if(!st){ st = {name:site, total:0, candidates:new Map()}; race.sites.set(site, st); }
+    st.total += votes;
+    st.candidates.set(candidate, (st.candidates.get(candidate)||0) + votes);
+  }
+
+  // pick default race = ארצית if exists, else first
+  currentRaceKey = races.has('ארצית') ? 'ארצית' : races.keys().next().value;
+}
+
+function getRace(){ return races.get(currentRaceKey); }
+
+function sortedCandidates(race){
+  return [...race.candidates.values()].sort((a,b)=>b.total-a.total);
+}
+function sortedSites(race){
+  return [...race.sites.values()].sort((a,b)=>b.total-a.total);
+}
+
+// ---------- UI setup ----------
+
+function setupUI(){
+  populateRaceSelect();
+  document.getElementById('raceSelect').addEventListener('change', (e)=>{
+    currentRaceKey = e.target.value;
+    onRaceChange();
+  });
+
+  document.querySelectorAll('.tab-btn').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+      document.querySelectorAll('.tab-panel').forEach(p=>p.classList.remove('active'));
+      btn.classList.add('active');
+      document.getElementById('tab-'+btn.dataset.tab).classList.add('active');
+    });
+  });
+
+  document.getElementById('candidateInput').addEventListener('change', renderCandidateTab);
+  document.getElementById('candTopN').addEventListener('change', renderCandidateTab);
+  document.getElementById('candMinVotes').addEventListener('change', renderCandidateTab);
+
+  document.getElementById('siteInput').addEventListener('change', renderSiteTab);
+
+  document.getElementById('matrixRenderBtn').addEventListener('click', renderMatrix);
+  document.getElementById('pinCandBtn').addEventListener('click', ()=>{
+    addPin('cand', document.getElementById('pinCandInput').value.trim());
+    document.getElementById('pinCandInput').value='';
+  });
+  document.getElementById('pinSiteBtn').addEventListener('click', ()=>{
+    addPin('site', document.getElementById('pinSiteInput').value.trim());
+    document.getElementById('pinSiteInput').value='';
+  });
+
+  document.getElementById('retryBtn').addEventListener('click', ()=>{
+    document.getElementById('errorBox').style.display='none';
+    document.getElementById('loading').style.display='block';
+    init();
+  });
+
+  setupDropzone();
+  onRaceChange();
+}
+
+function populateRaceSelect(){
+  const sel = document.getElementById('raceSelect');
+  sel.innerHTML='';
+  const keys = [...races.keys()].sort((a,b)=>{
+    if(a==='ארצית') return -1;
+    if(b==='ארצית') return 1;
+    return a.localeCompare(b,'he');
+  });
+  for(const k of keys){
+    const r = races.get(k);
+    const opt = document.createElement('option');
+    opt.value = k;
+    opt.textContent = r.label + '  ·  ' + r.totalVotes.toLocaleString() + ' קולות';
+    sel.appendChild(opt);
+  }
+  sel.value = currentRaceKey;
+}
+
+let pinnedCand = new Set();
+let pinnedSite = new Set();
+
+function onRaceChange(){
+  pinnedCand = new Set();
+  pinnedSite = new Set();
+  renderPins();
+  const race = getRace();
+
+  document.getElementById('summaryStats').innerHTML = `
+    <div class="stat-chip"><div class="n">${race.candidates.size}</div><div class="l">מועמדים</div></div>
+    <div class="stat-chip"><div class="n">${race.sites.size}</div><div class="l">אתרים</div></div>
+    <div class="stat-chip"><div class="n">${race.totalVotes.toLocaleString()}</div><div class="l">סה"כ קולות</div></div>
+  `;
+  setStatus(`<span class="status-pill">${rowCount.toLocaleString()} שורות נטענו</span><button class="refresh-btn" id="refreshBtn2">רענון</button>`);
+  document.getElementById('refreshBtn2').addEventListener('click', ()=>{
+    document.getElementById('app').style.display='none';
+    document.getElementById('loading').style.display='block';
+    init();
+  });
+
+  // datalists
+  const candList = document.getElementById('candidateOptions');
+  candList.innerHTML = sortedCandidates(race).map(c=>`<option value="${escapeHtml(c.name)}">`).join('');
+  const siteList = document.getElementById('siteOptions');
+  siteList.innerHTML = sortedSites(race).map(s=>`<option value="${escapeHtml(s.name)}">`).join('');
+
+  document.getElementById('candidateInput').value = sortedCandidates(race)[0]?.name || '';
+  document.getElementById('siteInput').value = sortedSites(race)[0]?.name || '';
+
+  renderCandidateTab();
+  renderSiteTab();
+  document.getElementById('matrixWrap').innerHTML = '<div class="empty-hint">לחצו "עדכן מטריצה" כדי להציג</div>';
+}
+
+function escapeHtml(s){
+  return String(s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function pct(n,d){ return d>0 ? (n/d*100) : 0; }
+function fmtPct(n,d){ return pct(n,d).toFixed(1)+'%'; }
+
+// ---------- TAB 1: candidate ----------
+
+function renderCandidateTab(){
+  const race = getRace();
+  const name = document.getElementById('candidateInput').value.trim();
+  const topN = parseInt(document.getElementById('candTopN').value) || 15;
+  const minVotes = parseInt(document.getElementById('candMinVotes').value) || 0;
+
+  const cand = race.candidates.get(name);
+  const wrap = document.getElementById('candidateResults');
+  const statsWrap = document.getElementById('candidateStatsWrap');
+
+  if(!cand){
+    statsWrap.innerHTML='';
+    wrap.innerHTML = '<div class="empty-hint">בחרו מועמד קיים מהרשימה</div>';
+    return;
+  }
+
+  const siteEntries = [...cand.sites.entries()].map(([siteName, votes])=>{
+    const st = race.sites.get(siteName);
+    return { site: siteName, votes, siteTotal: st.total, pct: pct(votes, st.total), candidates: st.candidates };
+  });
+
+  const numSites = siteEntries.length;
+  const avgPct = siteEntries.reduce((a,b)=>a+b.pct,0) / (numSites||1);
+  const best = siteEntries.slice().sort((a,b)=>b.pct-a.pct)[0];
+
+  statsWrap.innerHTML = `
+    <div class="cand-stats">
+      <div class="box"><div class="v">${cand.total.toLocaleString()}</div><div class="k">סה"כ קולות</div></div>
+      <div class="box"><div class="v">${numSites}</div><div class="k">אתרים בהם קיבל קולות</div></div>
+      <div class="box"><div class="v">${avgPct.toFixed(1)}%</div><div class="k">אחוז ממוצע באתר</div></div>
+      <div class="box"><div class="v">${best ? best.pct.toFixed(1)+'%' : '-'}</div><div class="k">האחוז הגבוה ביותר (${best?escapeHtml(best.site):''})</div></div>
+    </div>
+  `;
+
+  const byVotes = siteEntries.slice().sort((a,b)=>b.votes-a.votes).slice(0, topN);
+  const byPct = siteEntries.filter(e=>e.siteTotal>=minVotes).sort((a,b)=>b.pct-a.pct).slice(0, topN);
+
+  wrap.innerHTML = `
+    <div class="two-col">
+      <div class="card">
+        <h3>המקומות המובילים — במספרים <span class="hint">(סה"כ קולות למועמד)</span></h3>
+        <div class="table-scroll">${candTable(byVotes,'votes')}</div>
+      </div>
+      <div class="card">
+        <h3>המקומות המובילים — באחוזים <span class="hint">(מסך הקולות באתר, מתוך אתרים עם ${minVotes}+ קולות)</span></h3>
+        <div class="table-scroll">${candTable(byPct,'pct')}</div>
+      </div>
+    </div>
+  `;
+
+  // attach expand handlers
+  wrap.querySelectorAll('tr.expand-row').forEach(tr=>{
+    tr.addEventListener('click', ()=>{
+      const siteName = tr.dataset.site;
+      const next = tr.nextElementSibling;
+      if(next && next.classList.contains('site-leader-row')){ next.remove(); return; }
+      wrap.querySelectorAll('.site-leader-row').forEach(r=>r.remove());
+      const st = race.sites.get(siteName);
+      const leaders = [...st.candidates.entries()].sort((a,b)=>b[1]-a[1]).slice(0,5);
+      const row = document.createElement('tr');
+      row.className = 'site-leader-row';
+      const td = document.createElement('td');
+      td.colSpan = 4;
+      td.innerHTML = `<div class="site-leaders"><b>${escapeHtml(siteName)}</b> — 5 המועמדים המובילים: ` +
+        leaders.map(([n,v],i)=>`${i+1}. ${escapeHtml(n)} (${v.toLocaleString()}, ${fmtPct(v, st.total)})`).join(' &nbsp;·&nbsp; ') +
+        `</div>`;
+      row.appendChild(td);
+      tr.after(row);
+    });
+  });
+}
+
+function candTable(entries, sortKind){
+  if(entries.length===0) return '<div class="empty-hint">אין נתונים</div>';
+  let rows = entries.map((e,i)=>{
+    const rankClass = i===0?'r1':i===1?'r2':i===2?'r3':'';
+    return `<tr class="expand-row" data-site="${escapeHtml(e.site)}">
+      <td><span class="rank-badge ${rankClass}">${i+1}</span></td>
+      <td>${escapeHtml(e.site)}</td>
+      <td>${e.votes.toLocaleString()} <span style="color:var(--sub);font-size:11px">/ ${e.siteTotal.toLocaleString()}</span></td>
+      <td>
+        <div style="display:flex;align-items:center;gap:6px;">
+          <div class="bar-wrap" style="max-width:70px;"><div class="bar-fill" style="width:${Math.min(e.pct,100)}%"></div></div>
+          <span>${e.pct.toFixed(1)}%</span>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+  return `<table>
+    <thead><tr><th>#</th><th>אתר</th><th>קולות</th><th>אחוז מהאתר</th></tr></thead>
+    <tbody>${rows}</tbody>
+  </table>`;
+}
+
+// ---------- TAB 2: site ----------
+
+function renderSiteTab(){
+  const race = getRace();
+  const name = document.getElementById('siteInput').value.trim();
+  const st = race.sites.get(name);
+  const wrap = document.getElementById('siteResults');
+
+  if(!st){
+    wrap.innerHTML = '<div class="empty-hint">בחרו אתר קיים מהרשימה</div>';
+    return;
+  }
+
+  const ranked = [...st.candidates.entries()].sort((a,b)=>b[1]-a[1]);
+  const rows = ranked.map(([n,v],i)=>{
+    const rankClass = i===0?'r1':i===1?'r2':i===2?'r3':'';
+    const p = pct(v, st.total);
+    return `<tr>
+      <td><span class="rank-badge ${rankClass}">${i+1}</span></td>
+      <td>${escapeHtml(n)}</td>
+      <td>${v.toLocaleString()}</td>
+      <td>
+        <div style="display:flex;align-items:center;gap:6px;">
+          <div class="bar-wrap" style="max-width:140px;"><div class="bar-fill" style="width:${Math.min(p,100)}%"></div></div>
+          <span>${p.toFixed(1)}%</span>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+
+  wrap.innerHTML = `
+    <div class="card">
+      <h3>${escapeHtml(name)} <span class="hint">— ${st.total.toLocaleString()} קולות סה"כ, ${ranked.length} מועמדים</span></h3>
+      <div class="table-scroll">
+        <table>
+          <thead><tr><th>#</th><th>מועמד</th><th>קולות</th><th>אחוז</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    </div>
+  `;
+}
+
+// ---------- TAB 3: matrix ----------
+
+function addPin(kind, name){
+  const race = getRace();
+  if(!name) return;
+  if(kind==='cand'){
+    if(!race.candidates.has(name)) return;
+    pinnedCand.add(name);
+  }else{
+    if(!race.sites.has(name)) return;
+    pinnedSite.add(name);
+  }
+  renderPins();
+}
+
+function renderPins(){
+  document.getElementById('pinnedCandChips').innerHTML = [...pinnedCand].map(n=>
+    `<span class="chip">${escapeHtml(n)}<button data-n="${escapeHtml(n)}" class="rm-cand">✕</button></span>`
+  ).join('');
+  document.getElementById('pinnedSiteChips').innerHTML = [...pinnedSite].map(n=>
+    `<span class="chip">${escapeHtml(n)}<button data-n="${escapeHtml(n)}" class="rm-site">✕</button></span>`
+  ).join('');
+  document.querySelectorAll('.rm-cand').forEach(b=>b.addEventListener('click', e=>{ pinnedCand.delete(e.target.dataset.n); renderPins(); }));
+  document.querySelectorAll('.rm-site').forEach(b=>b.addEventListener('click', e=>{ pinnedSite.delete(e.target.dataset.n); renderPins(); }));
+}
+
+function renderMatrix(){
+  const race = getRace();
+  const topCandN = parseInt(document.getElementById('matrixTopCand').value) || 15;
+  const topSiteN = parseInt(document.getElementById('matrixTopSites').value) || 15;
+  const metric = document.getElementById('matrixMetric').value;
+
+  let candList = sortedCandidates(race).slice(0, topCandN).map(c=>c.name);
+  for(const n of pinnedCand) if(!candList.includes(n)) candList.push(n);
+
+  let siteList = sortedSites(race).slice(0, topSiteN).map(s=>s.name);
+  for(const n of pinnedSite) if(!siteList.includes(n)) siteList.push(n);
+
+  if(candList.length===0 || siteList.length===0){
+    document.getElementById('matrixWrap').innerHTML = '<div class="empty-hint">אין נתונים להצגה</div>';
+    return;
+  }
+
+  // header row with leader per site
+  let headerHtml = '<th></th>' + siteList.map(siteName=>{
+    const st = race.sites.get(siteName);
+    const leader = [...st.candidates.entries()].sort((a,b)=>b[1]-a[1])[0];
+    const leaderLabel = leader ? `${leader[0].split(' ')[0]} ${fmtPct(leader[1], st.total)}` : '';
+    return `<th title="${escapeHtml(siteName)}">${escapeHtml(siteName)}<span class="site-sub">מוביל: ${escapeHtml(leaderLabel)}</span></th>`;
+  }).join('');
+
+  let bodyHtml = candList.map(candName=>{
+    const cand = race.candidates.get(candName);
+    const cells = siteList.map(siteName=>{
+      const st = race.sites.get(siteName);
+      const votes = cand ? (cand.sites.get(siteName) || 0) : 0;
+      const p = pct(votes, st.total);
+      // rank of this candidate at this site
+      const ranked = [...st.candidates.entries()].sort((a,b)=>b[1]-a[1]);
+      const rankIdx = ranked.findIndex(([n])=>n===candName);
+      let cls = '';
+      if(votes===0) cls='zero';
+      else if(rankIdx===0) cls='lead1';
+      else if(rankIdx===1) cls='lead2';
+      else if(rankIdx===2) cls='lead3';
+
+      let label;
+      if(metric==='votes') label = votes.toLocaleString();
+      else if(metric==='pct') label = votes>0 ? p.toFixed(1)+'%' : '-';
+      else label = votes>0 ? `${votes.toLocaleString()} (${p.toFixed(1)}%)` : '-';
+
+      return `<td class="${cls}">${label}</td>`;
+    }).join('');
+    return `<tr><th>${escapeHtml(candName)} <span style="color:var(--sub);font-weight:400;font-size:10.5px;">${cand?cand.total.toLocaleString():0}</span></th>${cells}</tr>`;
+  }).join('');
+
+  document.getElementById('matrixWrap').innerHTML = `
+    <table id="matrixTable">
+      <thead><tr>${headerHtml}</tr></thead>
+      <tbody>${bodyHtml}</tbody>
+    </table>
+  `;
+}
+
+// ---------- File fallback ----------
+
+function setupDropzone(){
+  const dz = document.getElementById('dropzone');
+  const fileInput = document.getElementById('fileInput');
+  dz.addEventListener('click', ()=>fileInput.click());
+  dz.addEventListener('dragover', e=>{ e.preventDefault(); dz.classList.add('drag'); });
+  dz.addEventListener('dragleave', ()=> dz.classList.remove('drag'));
+  dz.addEventListener('drop', e=>{
+    e.preventDefault(); dz.classList.remove('drag');
+    if(e.dataTransfer.files.length) readFile(e.dataTransfer.files[0]);
+  });
+  fileInput.addEventListener('change', e=>{
+    if(e.target.files.length) readFile(e.target.files[0]);
+  });
+}
+function readFile(file){
+  const reader = new FileReader();
+  reader.onload = e => parseAndBuild(e.target.result);
+  reader.readAsText(file, 'UTF-8');
+}
+
+init();
+</script>
+</body>
+</html>

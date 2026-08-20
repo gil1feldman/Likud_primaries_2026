@@ -276,14 +276,29 @@
   <div id="raceNote" style="display:none;background:#fff8e6;border:1px solid #f0dca0;border-radius:10px;padding:8px 14px;font-size:12px;color:#6b5a20;margin-bottom:16px;"></div>
 
   <div class="tabs">
-    <button class="tab-btn active" data-tab="candidate">לפי מועמד</button>
+    <button class="tab-btn active" data-tab="overview">דירוג מועמדים</button>
+    <button class="tab-btn" data-tab="candidate">לפי מועמד</button>
     <button class="tab-btn" data-tab="site">לפי אתר הצבעה</button>
     <button class="tab-btn" data-tab="sitecount">מספר מועמדים לפי אתר</button>
     <button class="tab-btn" data-tab="matrix">קורלציה בין מועמדים</button>
   </div>
 
+  <!-- ===== TAB 0: OVERVIEW / RANKING ===== -->
+  <div class="tab-panel active" id="tab-overview">
+    <div class="card">
+      <h3>כל המועמדים ברשימה הנבחרת <span class="hint">— מדורגים לפי סה"כ קולות</span></h3>
+      <div class="picker-row">
+        <div class="field">
+          <label>סינון לפי שם מועמד</label>
+          <input type="text" id="overviewFilter" placeholder="הקלידו לסינון...">
+        </div>
+      </div>
+    </div>
+    <div id="overviewResults"></div>
+  </div>
+
   <!-- ===== TAB 1: CANDIDATE ===== -->
-  <div class="tab-panel active" id="tab-candidate">
+  <div class="tab-panel" id="tab-candidate">
     <div class="card">
       <h3>בחירת מועמד</h3>
       <div class="picker-row">
@@ -540,6 +555,8 @@ function setupUI(){
     });
   });
 
+  document.getElementById('overviewFilter').addEventListener('input', renderOverviewTab);
+
   document.getElementById('candidateInput').addEventListener('change', renderCandidateTab);
   document.getElementById('candTopN').addEventListener('change', renderCandidateTab);
   document.getElementById('candMinVotes').addEventListener('change', renderCandidateTab);
@@ -621,6 +638,7 @@ function onRaceChange(){
   document.getElementById('candidateInput').value = sortedCandidates(race)[0]?.name || '';
   document.getElementById('siteInput').value = sortedSites(race)[0]?.name || '';
 
+  renderOverviewTab();
   renderCandidateTab();
   renderSiteTab();
   renderSiteCountTab();
@@ -643,6 +661,53 @@ function isNationalRace(){ return currentRaceKey === 'ארצית'; }
 function isAtNationalMax(p){ return p >= NATIONAL_MAX_PCT - 0.05; }
 function maxBadge(p, nat){
   return (nat && isAtNationalMax(p)) ? ' <span class="max-badge" title="כל מי שהצביע באתר בחר במועמד/ת הזה/ו">🔥 כולם בחרו במועמד/ת</span>' : '';
+}
+
+// ---------- TAB 0: overview / ranking ----------
+
+function renderOverviewTab(){
+  const race = getRace();
+  const nat = isNationalRace();
+  const filterText = document.getElementById('overviewFilter').value.trim();
+  const wrap = document.getElementById('overviewResults');
+
+  let list = sortedCandidates(race); // already sorted desc by total votes
+  if(filterText) list = list.filter(c => c.name.includes(filterText));
+
+  if(list.length === 0){
+    wrap.innerHTML = '<div class="empty-hint">אין תוצאות</div>';
+    return;
+  }
+
+  const rows = list.map((c,i)=>{
+    const rankClass = i===0?'r1':i===1?'r2':i===2?'r3':'';
+    const p = pct(c.total, race.totalVotes);
+    const numSites = c.sites.size;
+    return `<tr>
+      <td><span class="rank-badge ${rankClass}">${i+1}</span></td>
+      <td>${escapeHtml(c.name)}</td>
+      <td>${c.total.toLocaleString()}</td>
+      <td>
+        <div style="display:flex;align-items:center;gap:6px;">
+          <div class="bar-wrap" style="max-width:140px;"><div class="bar-fill" style="width:${Math.min(p*10,100)}%"></div></div>
+          <span>${p.toFixed(2)}%${maxBadge(p, nat)}</span>
+        </div>
+      </td>
+      <td>${numSites.toLocaleString()}</td>
+    </tr>`;
+  }).join('');
+
+  wrap.innerHTML = `
+    <div class="card">
+      <h3>${escapeHtml(getRace().label)} <span class="hint">— ${race.totalVotes.toLocaleString()} קולות סה"כ, ${list.length} מועמדים${nat?' · אחוז מהסה"כ מוגבל תיאורטית ל-8.3%':''}</span></h3>
+      <div class="table-scroll" style="max-height:640px;">
+        <table>
+          <thead><tr><th>#</th><th>מועמד</th><th>סה"כ קולות</th><th>אחוז מסה"כ הקולות ברשימה</th><th>אתרים בהם קיבל קולות</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    </div>
+  `;
 }
 
 // ---------- TAB 1: candidate ----------

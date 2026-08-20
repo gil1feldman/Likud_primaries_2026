@@ -642,7 +642,7 @@ const NATIONAL_MAX_PCT = 100/12;
 function isNationalRace(){ return currentRaceKey === 'ארצית'; }
 function isAtNationalMax(p){ return p >= NATIONAL_MAX_PCT - 0.05; }
 function maxBadge(p, nat){
-  return (nat && isAtNationalMax(p)) ? ' <span class="max-badge" title="כל מי שהצביע באתר בחר במועמד הזה">🔥 כולם בחרו בו</span>' : '';
+  return (nat && isAtNationalMax(p)) ? ' <span class="max-badge" title="כל מי שהצביע באתר בחר במועמד/ת הזה/ו">🔥 כולם בחרו במועמד/ת</span>' : '';
 }
 
 // ---------- TAB 1: candidate ----------

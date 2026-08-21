@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>דשבורד תוצאות פריימריז הליכוד</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
 <style>
   :root{
     --bg:#f4f5f8;
@@ -281,6 +282,7 @@
     <button class="tab-btn" data-tab="site">לפי אתר הצבעה</button>
     <button class="tab-btn" data-tab="sitecount">מספר מועמדים לפי אתר</button>
     <button class="tab-btn" data-tab="matrix">קורלציה בין מועמדים</button>
+    <button class="tab-btn" data-tab="network">רשת קשרים</button>
     <button class="tab-btn" data-tab="compare">השוואת שני מועמדים</button>
   </div>
 
@@ -411,6 +413,41 @@
     </div>
   </div>
 
+  <!-- ===== TAB: NETWORK GRAPH ===== -->
+  <div class="tab-panel" id="tab-network">
+    <div class="card">
+      <h3>רשת קשרים בין מועמדים <span class="hint">— קלסטרים ויזואליים לפי קורלציה (הרשימה שנבחרה למעלה)</span></h3>
+      <div class="matrix-controls">
+        <div class="field">
+          <label>מספר מועמדים מקסימלי <span class="hint">(לפי הכי הרבה קולות)</span></label>
+          <input type="number" id="netTopN" value="40" min="2" max="150">
+        </div>
+        <div class="field">
+          <label>קולות מינימום</label>
+          <input type="number" id="netMinVotes" placeholder="ללא הגבלה" min="0">
+        </div>
+        <div class="field">
+          <label>קולות מקסימום</label>
+          <input type="number" id="netMaxVotes" placeholder="ללא הגבלה" min="0">
+        </div>
+        <div class="field">
+          <label>סף קורלציה מינימלי לקו</label>
+          <input type="number" id="netCorrThreshold" value="0.45" min="0" max="1" step="0.05">
+        </div>
+        <button class="btn" id="netRenderBtn">צייר רשת</button>
+      </div>
+      <p style="color:var(--sub);font-size:12px;margin:6px 0 0;">אפשר לגרור נקודות עם העכבר. קווים כחולים = קורלציה חיובית (הולכים ביחד); קווים אדומים = שלילית (מתחרים על אותם קולות). גודל הנקודה = סה"כ קולות.</p>
+    </div>
+
+    <div class="card">
+      <div id="networkWrap" style="position:relative;width:100%;height:560px;"><div class="empty-hint">לחצו "צייר רשת" כדי להציג</div></div>
+      <div class="legend">
+        <span><i style="background:#378ADD"></i> קשר חיובי (הולכים ביחד)</span>
+        <span><i style="background:#E24B4A"></i> קשר שלילי (מתחרים)</span>
+      </div>
+    </div>
+  </div>
+
   <!-- ===== TAB 4: COMPARE TWO CANDIDATES ===== -->
   <div class="tab-panel" id="tab-compare">
     <div class="card">
@@ -451,6 +488,7 @@ const COL = {
 let races = new Map();      // raceKey -> race object
 let currentRaceKey = null;
 let rowCount = 0;
+let currentNetworkSim = null;
 
 // ---------- Loading ----------
 
@@ -592,6 +630,7 @@ function setupUI(){
   document.getElementById('sitecountSort').addEventListener('change', renderSiteCountTab);
 
   document.getElementById('matrixRenderBtn').addEventListener('click', renderCorrelationMatrix);
+  document.getElementById('netRenderBtn').addEventListener('click', renderNetworkGraph);
   document.getElementById('compareAInput').addEventListener('change', renderCompareTab);
   document.getElementById('compareBInput').addEventListener('change', renderCompareTab);
   document.getElementById('pinCandBtn').addEventListener('click', ()=>{
@@ -671,6 +710,8 @@ function onRaceChange(){
   renderSiteCountTab();
   renderCompareTab();
   document.getElementById('matrixWrap').innerHTML = '<div class="empty-hint">לחצו "חשב קורלציה" כדי להציג</div>';
+  if(currentNetworkSim){ currentNetworkSim.stop(); currentNetworkSim = null; }
+  document.getElementById('networkWrap').innerHTML = '<div class="empty-hint">לחצו "צייר רשת" כדי להציג</div>';
 }
 
 function escapeHtml(s){
@@ -1076,6 +1117,102 @@ function renderCorrelationMatrix(){
       <tbody>${bodyHtml}</tbody>
     </table>
   `;
+}
+
+// ---------- TAB: network graph ----------
+
+function renderNetworkGraph(){
+  const race = getRace();
+  const wrapEl = document.getElementById('networkWrap');
+
+  const topN = Math.max(2, parseInt(document.getElementById('netTopN').value) || 40);
+  const minVotesRaw = document.getElementById('netMinVotes').value.trim();
+  const maxVotesRaw = document.getElementById('netMaxVotes').value.trim();
+  const minVotes = minVotesRaw ? parseInt(minVotesRaw) : 0;
+  const maxVotes = maxVotesRaw ? parseInt(maxVotesRaw) : Infinity;
+  const corrThreshold = Math.max(0, Math.min(1, parseFloat(document.getElementById('netCorrThreshold').value) || 0.45));
+
+  let candList = sortedCandidates(race).filter(c => c.total >= minVotes && c.total <= maxVotes);
+  candList = candList.slice(0, topN);
+
+  if(currentNetworkSim){ currentNetworkSim.stop(); currentNetworkSim = null; }
+  wrapEl.innerHTML = '';
+
+  if(candList.length < 2){
+    wrapEl.innerHTML = '<div class="empty-hint">אין מספיק מועמדים בטווח שנבחר (נסו להרחיב את הטווח)</div>';
+    return;
+  }
+
+  const siteNames = sortedSites(race).map(s=>s.name);
+  function pctVec(cand){
+    return siteNames.map(siteName=>{
+      const st = race.sites.get(siteName);
+      const v = cand.sites.get(siteName) || 0;
+      return pct(v, st.total);
+    });
+  }
+  const vecCache = new Map();
+  function getVec(name){
+    if(!vecCache.has(name)) vecCache.set(name, pctVec(race.candidates.get(name)));
+    return vecCache.get(name);
+  }
+
+  const nodesData = candList.map(c => ({ id: c.name, votes: c.total }));
+  const edgesData = [];
+  for(let i=0;i<candList.length;i++){
+    for(let j=i+1;j<candList.length;j++){
+      const a = candList[i].name, b = candList[j].name;
+      const r = pearson(getVec(a), getVec(b));
+      if(r !== null && Math.abs(r) >= corrThreshold){
+        edgesData.push({ source: a, target: b, r });
+      }
+    }
+  }
+
+  const width = wrapEl.clientWidth || 900, height = 560;
+  const svg = d3.select(wrapEl).append('svg').attr('width','100%').attr('height',height).attr('viewBox',[0,0,width,height]);
+
+  const rScale = d3.scaleSqrt().domain(d3.extent(nodesData, d=>d.votes)).range([9,26]);
+  const linkForceData = edgesData.filter(e=>e.r>0).map(e=>({...e, distance: 40 + (1-e.r)*180 }));
+
+  const sim = d3.forceSimulation(nodesData)
+    .force('link', d3.forceLink(linkForceData).id(d=>d.id).distance(d=>d.distance).strength(d=>Math.min(d.r,0.9)))
+    .force('charge', d3.forceManyBody().strength(-240))
+    .force('center', d3.forceCenter(width/2, height/2))
+    .force('collide', d3.forceCollide().radius(d=>rScale(d.votes)+14));
+  currentNetworkSim = sim;
+
+  const linkSel = svg.append('g').selectAll('line').data(edgesData).join('line')
+    .attr('stroke', d=> d.r>0 ? '#378ADD' : '#E24B4A')
+    .attr('stroke-width', d=> 1+Math.abs(d.r)*3)
+    .attr('stroke-opacity', d=> 0.25+Math.abs(d.r)*0.45);
+
+  const nodeSel = svg.append('g').selectAll('circle').data(nodesData).join('circle')
+    .attr('r', d=>rScale(d.votes))
+    .attr('fill', '#eef3fb')
+    .attr('stroke', '#1c4fa0')
+    .attr('stroke-width', 1)
+    .style('cursor','grab')
+    .call(d3.drag()
+      .on('start', (event,d)=>{ if(!event.active) sim.alphaTarget(0.3).restart(); d.fx=d.x; d.fy=d.y; })
+      .on('drag', (event,d)=>{ d.fx=event.x; d.fy=event.y; })
+      .on('end', (event,d)=>{ if(!event.active) sim.alphaTarget(0); d.fx=null; d.fy=null; }));
+
+  const labelSel = svg.append('g').selectAll('text').data(nodesData).join('text')
+    .text(d=>d.id)
+    .attr('font-size', 10)
+    .attr('text-anchor','middle')
+    .attr('dy', d=>rScale(d.votes)+11)
+    .attr('fill','#6b7280')
+    .style('pointer-events','none');
+
+  nodeSel.append('title').text(d=> d.id + ' — ' + d.votes.toLocaleString() + ' קולות');
+
+  sim.on('tick', ()=>{
+    linkSel.attr('x1',d=>d.source.x).attr('y1',d=>d.source.y).attr('x2',d=>d.target.x).attr('y2',d=>d.target.y);
+    nodeSel.attr('cx',d=>d.x).attr('cy',d=>d.y);
+    labelSel.attr('x',d=>d.x).attr('y',d=>d.y);
+  });
 }
 
 // ---------- TAB 4: compare two candidates ----------

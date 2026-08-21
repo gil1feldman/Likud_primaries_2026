@@ -321,6 +321,7 @@
     <button class="tab-btn" data-tab="candidate">לפי מועמד</button>
     <button class="tab-btn" data-tab="site">לפי אתר הצבעה</button>
     <button class="tab-btn" data-tab="booth">לפי קלפי בודד</button>
+    <button class="tab-btn" data-tab="boothcompare">השוואת שני קלפיות</button>
     <button class="tab-btn" data-tab="sitecount">מספר מועמדים לפי אתר</button>
     <button class="tab-btn" data-tab="matrix">קורלציה בין מועמדים</button>
     <button class="tab-btn" data-tab="network">רשת קשרים</button>
@@ -331,6 +332,7 @@
     <option value="candidate">לפי מועמד</option>
     <option value="site">לפי אתר הצבעה</option>
     <option value="booth">לפי קלפי בודד</option>
+    <option value="boothcompare">השוואת שני קלפיות</option>
     <option value="sitecount">מספר מועמדים לפי אתר</option>
     <option value="matrix">קורלציה בין מועמדים</option>
     <option value="network">רשת קשרים</option>
@@ -404,6 +406,24 @@
       </div>
     </div>
     <div id="boothResults"></div>
+  </div>
+
+  <!-- ===== TAB 2d: COMPARE TWO BOOTHS ===== -->
+  <div class="tab-panel" id="tab-boothcompare">
+    <div class="card">
+      <h3>השוואת שני קלפיות <span class="hint">— לזיהוי קלפיות עם תוצאות זהות או כמעט זהות (חשד לכפילות נתונים)</span></h3>
+      <div class="picker-row">
+        <div class="field">
+          <label>קלפי א'</label>
+          <input type="text" id="boothCompareAInput" list="boothOptions" placeholder="לדוגמה: קרית אתא 01">
+        </div>
+        <div class="field">
+          <label>קלפי ב'</label>
+          <input type="text" id="boothCompareBInput" list="boothOptions" placeholder="לדוגמה: קרית אתא 05">
+        </div>
+      </div>
+    </div>
+    <div id="boothCompareResults"></div>
   </div>
 
   <!-- ===== TAB 2b: CANDIDATE COUNT PER SITE (national list only) ===== -->
@@ -712,6 +732,8 @@ function setupUI(){
 
   document.getElementById('siteInput').addEventListener('change', renderSiteTab);
   document.getElementById('boothInput').addEventListener('change', renderBoothTab);
+  document.getElementById('boothCompareAInput').addEventListener('change', renderBoothCompareTab);
+  document.getElementById('boothCompareBInput').addEventListener('change', renderBoothCompareTab);
 
   document.getElementById('sitecountMinVotes').addEventListener('change', renderSiteCountTab);
   document.getElementById('sitecountTopN').addEventListener('change', renderSiteCountTab);
@@ -793,6 +815,8 @@ function onRaceChange(){
   document.getElementById('candidateInput').value = sortedCandidates(race)[0]?.name || '';
   document.getElementById('siteInput').value = sortedSites(race)[0]?.name || '';
   document.getElementById('boothInput').value = sortedBooths(race)[0]?.name || '';
+  document.getElementById('boothCompareAInput').value = sortedBooths(race)[0]?.name || '';
+  document.getElementById('boothCompareBInput').value = sortedBooths(race)[1]?.name || '';
   document.getElementById('compareAInput').value = sortedCandidates(race)[0]?.name || '';
   document.getElementById('compareBInput').value = sortedCandidates(race)[1]?.name || '';
 
@@ -800,6 +824,7 @@ function onRaceChange(){
   renderCandidateTab();
   renderSiteTab();
   renderBoothTab();
+  renderBoothCompareTab();
   renderSiteCountTab();
   renderCompareTab();
   document.getElementById('matrixWrap').innerHTML = '<div class="empty-hint">לחצו "חשב קורלציה" כדי להציג</div>';
@@ -1072,6 +1097,91 @@ function renderBoothTab(){
         <table>
           <thead><tr><th>#</th><th>מועמד</th><th>קולות</th><th>אחוז מהקולות</th></tr></thead>
           <tbody>${rows}</tbody>
+        </table>
+      </div>
+    </div>
+  `;
+}
+
+// ---------- TAB 2d: compare two booths ----------
+
+function renderBoothCompareTab(){
+  const race = getRace();
+  const nameA = document.getElementById('boothCompareAInput').value.trim();
+  const nameB = document.getElementById('boothCompareBInput').value.trim();
+  const wrap = document.getElementById('boothCompareResults');
+
+  const btA = [...race.booths.values()].find(b => b.name === nameA);
+  const btB = [...race.booths.values()].find(b => b.name === nameB);
+
+  if(!btA || !btB){
+    wrap.innerHTML = '<div class="empty-hint">בחרו שני קלפיות קיימות מהרשימה</div>';
+    return;
+  }
+  if(nameA === nameB){
+    wrap.innerHTML = '<div class="empty-hint">בחרו שני קלפיות שונות</div>';
+    return;
+  }
+
+  // full candidate vectors (all candidates in the race, including zeros) for a
+  // like-for-like correlation, matching the methodology used elsewhere
+  const allCandNames = sortedCandidates(race).map(c=>c.name);
+  const vecA = allCandNames.map(n => btA.candidates.get(n) || 0);
+  const vecB = allCandNames.map(n => btB.candidates.get(n) || 0);
+  const r = pearson(vecA, vecB);
+  const rColor = corrColor(r), rFg = corrTextColor(r);
+
+  // comparison rows: any candidate with votes in at least one of the two booths
+  const rows = allCandNames
+    .map(n => ({ name:n, a: btA.candidates.get(n)||0, b: btB.candidates.get(n)||0 }))
+    .filter(r => r.a>0 || r.b>0)
+    .sort((x,y) => Math.max(y.a,y.b) - Math.max(x.a,x.b));
+
+  const identicalCount = rows.filter(r => r.a === r.b).length;
+
+  const tableRows = rows.map(row=>{
+    const same = row.a === row.b;
+    const diff = row.a - row.b;
+    const rowStyle = same ? 'background:#eafbf1;' : '';
+    const diffLabel = diff===0 ? '—' : (diff>0 ? '+'+diff : diff.toString());
+    const diffColor = diff===0 ? 'var(--sub)' : (diff>0 ? '#1c7a52' : '#b33a2e');
+    return `<tr style="${rowStyle}">
+      <td>${escapeHtml(row.name)}</td>
+      <td>${row.a.toLocaleString()}</td>
+      <td>${row.b.toLocaleString()}</td>
+      <td style="color:${diffColor};font-weight:600;">${diffLabel}</td>
+    </tr>`;
+  }).join('');
+
+  wrap.innerHTML = `
+    <div class="card">
+      <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:center;justify-content:center;text-align:center;">
+        <div class="box" style="background:#f8f9fc;border:1px solid var(--line);border-radius:10px;padding:10px 18px;">
+          <div style="font-size:15px;font-weight:700;color:var(--accent);">${escapeHtml(btA.name)}</div>
+          <div style="font-size:11px;color:var(--sub);">${escapeHtml(btA.site)} · ${btA.total.toLocaleString()} קולות</div>
+        </div>
+        <div>
+          <div style="font-size:12px;color:var(--sub);margin-bottom:4px;">קורלציה בין הקלפיות</div>
+          <div style="display:inline-block;padding:8px 20px;border-radius:20px;background:${rColor};color:${rFg};font-weight:700;font-size:17px;">
+            ${r===null?'N/A':r.toFixed(5)}
+          </div>
+        </div>
+        <div class="box" style="background:#f8f9fc;border:1px solid var(--line);border-radius:10px;padding:10px 18px;">
+          <div style="font-size:15px;font-weight:700;color:var(--accent);">${escapeHtml(btB.name)}</div>
+          <div style="font-size:11px;color:var(--sub);">${escapeHtml(btB.site)} · ${btB.total.toLocaleString()} קולות</div>
+        </div>
+      </div>
+      <p style="text-align:center;color:var(--sub);font-size:12.5px;margin:12px 0 0;">
+        ${identicalCount} מתוך ${rows.length} מועמדים עם <b>אותו מספר קולות בדיוק</b> בשתי הקלפיות (שורות ירוקות בטבלה).
+      </p>
+    </div>
+
+    <div class="card">
+      <h3>השוואה מלאה, לפי מועמד</h3>
+      <div class="table-scroll" style="max-height:600px;">
+        <table>
+          <thead><tr><th>מועמד</th><th>קולות ב${escapeHtml(btA.name)}</th><th>קולות ב${escapeHtml(btB.name)}</th><th>הפרש</th></tr></thead>
+          <tbody>${tableRows}</tbody>
         </table>
       </div>
     </div>

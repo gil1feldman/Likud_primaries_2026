@@ -281,6 +281,7 @@
     <button class="tab-btn" data-tab="site">לפי אתר הצבעה</button>
     <button class="tab-btn" data-tab="sitecount">מספר מועמדים לפי אתר</button>
     <button class="tab-btn" data-tab="matrix">קורלציה בין מועמדים</button>
+    <button class="tab-btn" data-tab="compare">השוואת שני מועמדים</button>
   </div>
 
   <!-- ===== TAB 0: OVERVIEW / RANKING ===== -->
@@ -408,6 +409,24 @@
         <span><i style="background:#c0392b"></i> קורלציה שלילית חזקה (קרוב ל-1-)</span>
       </div>
     </div>
+  </div>
+
+  <!-- ===== TAB 4: COMPARE TWO CANDIDATES ===== -->
+  <div class="tab-panel" id="tab-compare">
+    <div class="card">
+      <h3>השוואת שני מועמדים</h3>
+      <div class="picker-row">
+        <div class="field">
+          <label>מועמד/ת א'</label>
+          <input type="text" id="compareAInput" list="candidateOptions" placeholder="לדוגמה: לוין יריב">
+        </div>
+        <div class="field">
+          <label>מועמד/ת ב'</label>
+          <input type="text" id="compareBInput" list="candidateOptions" placeholder="לדוגמה: כהן אלי">
+        </div>
+      </div>
+    </div>
+    <div id="compareResults"></div>
   </div>
 
 </div>
@@ -569,6 +588,8 @@ function setupUI(){
   document.getElementById('sitecountSort').addEventListener('change', renderSiteCountTab);
 
   document.getElementById('matrixRenderBtn').addEventListener('click', renderCorrelationMatrix);
+  document.getElementById('compareAInput').addEventListener('change', renderCompareTab);
+  document.getElementById('compareBInput').addEventListener('change', renderCompareTab);
   document.getElementById('pinCandBtn').addEventListener('click', ()=>{
     addPin(document.getElementById('pinCandInput').value.trim());
     document.getElementById('pinCandInput').value='';
@@ -637,11 +658,14 @@ function onRaceChange(){
 
   document.getElementById('candidateInput').value = sortedCandidates(race)[0]?.name || '';
   document.getElementById('siteInput').value = sortedSites(race)[0]?.name || '';
+  document.getElementById('compareAInput').value = sortedCandidates(race)[0]?.name || '';
+  document.getElementById('compareBInput').value = sortedCandidates(race)[1]?.name || '';
 
   renderOverviewTab();
   renderCandidateTab();
   renderSiteTab();
   renderSiteCountTab();
+  renderCompareTab();
   document.getElementById('matrixWrap').innerHTML = '<div class="empty-hint">לחצו "חשב קורלציה" כדי להציג</div>';
 }
 
@@ -763,7 +787,10 @@ function renderCandidateTab(){
     </div>
   `;
 
-  // attach expand handlers
+  attachExpandHandlers(wrap, race, nat);
+}
+
+function attachExpandHandlers(wrap, race, nat){
   wrap.querySelectorAll('tr.expand-row').forEach(tr=>{
     tr.addEventListener('click', ()=>{
       const siteName = tr.dataset.site;
@@ -1045,6 +1072,142 @@ function renderCorrelationMatrix(){
       <tbody>${bodyHtml}</tbody>
     </table>
   `;
+}
+
+// ---------- TAB 4: compare two candidates ----------
+
+function renderCompareTab(){
+  const race = getRace();
+  const nat = isNationalRace();
+  const nameA = document.getElementById('compareAInput').value.trim();
+  const nameB = document.getElementById('compareBInput').value.trim();
+  const wrap = document.getElementById('compareResults');
+
+  const candA = race.candidates.get(nameA);
+  const candB = race.candidates.get(nameB);
+
+  if(!candA || !candB){
+    wrap.innerHTML = '<div class="empty-hint">בחרו שני מועמדים קיימים מהרשימה</div>';
+    return;
+  }
+  if(nameA === nameB){
+    wrap.innerHTML = '<div class="empty-hint">בחרו שני מועמדים שונים</div>';
+    return;
+  }
+
+  const siteNames = sortedSites(race).map(s=>s.name);
+  function pctVec(cand){
+    return siteNames.map(siteName=>{
+      const st = race.sites.get(siteName);
+      const v = cand.sites.get(siteName) || 0;
+      return pct(v, st.total);
+    });
+  }
+  const vecA = pctVec(candA), vecB = pctVec(candB);
+  const directR = pearson(vecA, vecB);
+
+  // top-40 candidates by total votes in the current race
+  const top40 = sortedCandidates(race).slice(0, 40);
+
+  function topCorrelations(cand, selfName){
+    const vec = pctVec(cand);
+    const results = [];
+    for(const other of top40){
+      if(other.name === selfName) continue;
+      const r = pearson(vec, pctVec(other));
+      if(r !== null) results.push({ name: other.name, r });
+    }
+    results.sort((a,b)=> b.r - a.r);
+    return { pos: results.slice(0,5), neg: results.slice(-5).reverse() };
+  }
+  const corrA = topCorrelations(candA, nameA);
+  const corrB = topCorrelations(candB, nameB);
+
+  function siteEntriesFor(cand){
+    return [...cand.sites.entries()].map(([siteName, votes])=>{
+      const st = race.sites.get(siteName);
+      return { site: siteName, votes, siteTotal: st.total, pct: pct(votes, st.total) };
+    });
+  }
+  const entriesA = siteEntriesFor(candA), entriesB = siteEntriesFor(candB);
+  const byVotesA = entriesA.slice().sort((a,b)=>b.votes-a.votes).slice(0,8);
+  const byVotesB = entriesB.slice().sort((a,b)=>b.votes-a.votes).slice(0,8);
+  const byPctA = entriesA.slice().sort((a,b)=>b.pct-a.pct).slice(0,8);
+  const byPctB = entriesB.slice().sort((a,b)=>b.pct-a.pct).slice(0,8);
+
+  function corrList(list){
+    if(list.length===0) return '<div class="empty-hint" style="padding:8px;">אין נתונים</div>';
+    return list.map(x=>{
+      const bg = corrColor(x.r), fg = corrTextColor(x.r);
+      return `<div style="display:flex;align-items:center;justify-content:space-between;padding:5px 10px;border-radius:6px;background:${bg};color:${fg};margin-bottom:4px;font-size:12.5px;">
+        <span>${escapeHtml(x.name)}</span><span style="font-weight:700;">${x.r.toFixed(2)}</span>
+      </div>`;
+    }).join('');
+  }
+
+  const directColor = corrColor(directR), directFg = corrTextColor(directR);
+
+  wrap.innerHTML = `
+    <div class="card">
+      <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:center;justify-content:center;text-align:center;">
+        <div class="box" style="background:#f8f9fc;border:1px solid var(--line);border-radius:10px;padding:10px 18px;">
+          <div style="font-size:18px;font-weight:700;color:var(--accent);">${candA.total.toLocaleString()}</div>
+          <div style="font-size:11px;color:var(--sub);">${escapeHtml(nameA)} — סה"כ קולות</div>
+        </div>
+        <div>
+          <div style="font-size:12px;color:var(--sub);margin-bottom:4px;">קורלציה ישירה ביניהם (לפי אחוזים)</div>
+          <div style="display:inline-block;padding:8px 20px;border-radius:20px;background:${directColor};color:${directFg};font-weight:700;font-size:17px;">
+            ${directR===null?'N/A':directR.toFixed(2)}
+          </div>
+        </div>
+        <div class="box" style="background:#f8f9fc;border:1px solid var(--line);border-radius:10px;padding:10px 18px;">
+          <div style="font-size:18px;font-weight:700;color:var(--accent);">${candB.total.toLocaleString()}</div>
+          <div style="font-size:11px;color:var(--sub);">${escapeHtml(nameB)} — סה"כ קולות</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="two-col">
+      <div class="card">
+        <h3>${escapeHtml(nameA)} — המקומות המובילים <span class="hint">(במספרים)</span></h3>
+        <div class="table-scroll">${candTable(byVotesA, nat)}</div>
+      </div>
+      <div class="card">
+        <h3>${escapeHtml(nameB)} — המקומות המובילים <span class="hint">(במספרים)</span></h3>
+        <div class="table-scroll">${candTable(byVotesB, nat)}</div>
+      </div>
+    </div>
+
+    <div class="two-col">
+      <div class="card">
+        <h3>${escapeHtml(nameA)} — המקומות המובילים <span class="hint">(באחוזים)</span></h3>
+        <div class="table-scroll">${candTable(byPctA, nat)}</div>
+      </div>
+      <div class="card">
+        <h3>${escapeHtml(nameB)} — המקומות המובילים <span class="hint">(באחוזים)</span></h3>
+        <div class="table-scroll">${candTable(byPctB, nat)}</div>
+      </div>
+    </div>
+
+    <div class="two-col">
+      <div class="card">
+        <h3>${escapeHtml(nameA)} — קורלציה חזקה מול 40 המועמדים המובילים</h3>
+        <div style="margin-bottom:6px;font-size:11.5px;color:var(--sub);">חיוביות ביותר (הולכים ביחד)</div>
+        ${corrList(corrA.pos)}
+        <div style="margin:10px 0 6px;font-size:11.5px;color:var(--sub);">שליליות ביותר (מתחרים על אותם קולות)</div>
+        ${corrList(corrA.neg)}
+      </div>
+      <div class="card">
+        <h3>${escapeHtml(nameB)} — קורלציה חזקה מול 40 המועמדים המובילים</h3>
+        <div style="margin-bottom:6px;font-size:11.5px;color:var(--sub);">חיוביות ביותר (הולכים ביחד)</div>
+        ${corrList(corrB.pos)}
+        <div style="margin:10px 0 6px;font-size:11.5px;color:var(--sub);">שליליות ביותר (מתחרים על אותם קולות)</div>
+        ${corrList(corrB.neg)}
+      </div>
+    </div>
+  `;
+
+  attachExpandHandlers(wrap, race, nat);
 }
 
 // ---------- File fallback ----------

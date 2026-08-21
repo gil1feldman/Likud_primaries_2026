@@ -249,7 +249,9 @@
     #app{ padding:12px 10px 40px; }
     .tabs{ display:none; }
     .mobile-tab-select{ display:block; }
-    .race-bar{ padding:12px; gap:10px; }
+    .race-bar{ padding:12px; gap:10px; flex-direction:column; align-items:stretch; }
+    .race-bar > .field{ width:100%; max-width:100%; }
+    #raceSelect{ width:100%; max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
     .summary-stats{ margin-inline-start:0; width:100%; justify-content:flex-start; }
     .card{ padding:13px 14px; }
     .picker-row{ gap:10px; }

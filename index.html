@@ -1158,14 +1158,17 @@ function renderNetworkGraph(){
   }
 
   const nodesData = candList.map(c => ({ id: c.name, votes: c.total }));
+  const nodeById = new Map(nodesData.map(n => [n.id, n]));
 
-  // compute all pairwise correlations once
+  // compute all pairwise correlations once, resolved directly to node object
+  // references (not id strings) so both the force simulation AND the rendered
+  // <line> elements share the same mutable source/target objects
   const allPairs = [];
   for(let i=0;i<candList.length;i++){
     for(let j=i+1;j<candList.length;j++){
       const a = candList[i].name, b = candList[j].name;
       const r = pearson(getVec(a), getVec(b));
-      if(r !== null) allPairs.push({ source: a, target: b, r });
+      if(r !== null) allPairs.push({ source: nodeById.get(a), target: nodeById.get(b), r });
     }
   }
 
@@ -1178,8 +1181,8 @@ function renderNetworkGraph(){
   const guaranteedPositive = allPairs.filter(e => e.r > 0).sort((a,b)=> b.r - a.r).slice(0, guaranteeCount);
 
   const edgeMap = new Map();
-  thresholdEdges.forEach(e => edgeMap.set(e.source+'|||'+e.target, e));
-  guaranteedPositive.forEach(e => { if(!edgeMap.has(e.source+'|||'+e.target)) edgeMap.set(e.source+'|||'+e.target, e); });
+  thresholdEdges.forEach(e => edgeMap.set(e.source.id+'|||'+e.target.id, e));
+  guaranteedPositive.forEach(e => { if(!edgeMap.has(e.source.id+'|||'+e.target.id)) edgeMap.set(e.source.id+'|||'+e.target.id, e); });
   const edgesData = [...edgeMap.values()];
 
   const width = wrapEl.clientWidth || 900, height = 560;
@@ -1188,10 +1191,10 @@ function renderNetworkGraph(){
   wrapEl.style.overflow = 'hidden';
 
   const rScale = d3.scaleSqrt().domain(d3.extent(nodesData, d=>d.votes)).range([8,22]);
-  const linkForceData = edgesData.filter(e=>e.r>0).map(e=>({...e, distance: 30 + (1-e.r)*110 }));
+  const linkForceEdges = edgesData.filter(e=>e.r>0); // same object refs as edgesData entries
 
   const sim = d3.forceSimulation(nodesData)
-    .force('link', d3.forceLink(linkForceData).id(d=>d.id).distance(d=>d.distance).strength(d=>Math.min(d.r,0.9)))
+    .force('link', d3.forceLink(linkForceEdges).distance(e=>30+(1-e.r)*110).strength(e=>Math.min(e.r,0.9)))
     .force('charge', d3.forceManyBody().strength(-90))
     .force('x', d3.forceX(width/2).strength(0.06))
     .force('y', d3.forceY(height/2).strength(0.08))

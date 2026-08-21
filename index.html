@@ -429,6 +429,10 @@
     <div id="compareResults"></div>
   </div>
 
+  <footer style="text-align:center;color:var(--sub);font-size:12px;padding:24px 12px 10px;">
+    פותח על ידי גיל פלדמן
+  </footer>
+
 </div>
 
 <script>
@@ -1169,6 +1173,23 @@ function renderCompareTab(){
 
     <div class="two-col">
       <div class="card">
+        <h3>${escapeHtml(nameA)} — קורלציה חזקה מול 40 המועמדים המובילים</h3>
+        <div style="margin-bottom:6px;font-size:11.5px;color:var(--sub);">חיוביות ביותר (הולכים ביחד)</div>
+        ${corrList(corrA.pos)}
+        <div style="margin:10px 0 6px;font-size:11.5px;color:var(--sub);">שליליות ביותר (מתחרים על אותם קולות)</div>
+        ${corrList(corrA.neg)}
+      </div>
+      <div class="card">
+        <h3>${escapeHtml(nameB)} — קורלציה חזקה מול 40 המועמדים המובילים</h3>
+        <div style="margin-bottom:6px;font-size:11.5px;color:var(--sub);">חיוביות ביותר (הולכים ביחד)</div>
+        ${corrList(corrB.pos)}
+        <div style="margin:10px 0 6px;font-size:11.5px;color:var(--sub);">שליליות ביותר (מתחרים על אותם קולות)</div>
+        ${corrList(corrB.neg)}
+      </div>
+    </div>
+
+    <div class="two-col">
+      <div class="card">
         <h3>${escapeHtml(nameA)} — המקומות המובילים <span class="hint">(במספרים)</span></h3>
         <div class="table-scroll">${candTable(byVotesA, nat)}</div>
       </div>
@@ -1186,23 +1207,6 @@ function renderCompareTab(){
       <div class="card">
         <h3>${escapeHtml(nameB)} — המקומות המובילים <span class="hint">(באחוזים)</span></h3>
         <div class="table-scroll">${candTable(byPctB, nat)}</div>
-      </div>
-    </div>
-
-    <div class="two-col">
-      <div class="card">
-        <h3>${escapeHtml(nameA)} — קורלציה חזקה מול 40 המועמדים המובילים</h3>
-        <div style="margin-bottom:6px;font-size:11.5px;color:var(--sub);">חיוביות ביותר (הולכים ביחד)</div>
-        ${corrList(corrA.pos)}
-        <div style="margin:10px 0 6px;font-size:11.5px;color:var(--sub);">שליליות ביותר (מתחרים על אותם קולות)</div>
-        ${corrList(corrA.neg)}
-      </div>
-      <div class="card">
-        <h3>${escapeHtml(nameB)} — קורלציה חזקה מול 40 המועמדים המובילים</h3>
-        <div style="margin-bottom:6px;font-size:11.5px;color:var(--sub);">חיוביות ביותר (הולכים ביחד)</div>
-        ${corrList(corrB.pos)}
-        <div style="margin:10px 0 6px;font-size:11.5px;color:var(--sub);">שליליות ביותר (מתחרים על אותם קולות)</div>
-        ${corrList(corrB.neg)}
       </div>
     </div>
   `;

@@ -321,7 +321,7 @@
     <button class="tab-btn" data-tab="candidate">לפי מועמד</button>
     <button class="tab-btn" data-tab="site">לפי אתר הצבעה</button>
     <button class="tab-btn" data-tab="booth">לפי קלפי בודד</button>
-    <button class="tab-btn" data-tab="boothcompare">השוואת שני קלפיות</button>
+    <button class="tab-btn" data-tab="boothcompare">השוואת שתי קלפיות</button>
     <button class="tab-btn" data-tab="sitecount">מספר מועמדים לפי אתר</button>
     <button class="tab-btn" data-tab="matrix">קורלציה בין מועמדים</button>
     <button class="tab-btn" data-tab="network">רשת קשרים</button>
@@ -332,7 +332,7 @@
     <option value="candidate">לפי מועמד</option>
     <option value="site">לפי אתר הצבעה</option>
     <option value="booth">לפי קלפי בודד</option>
-    <option value="boothcompare">השוואת שני קלפיות</option>
+    <option value="boothcompare">השוואת שתי קלפיות</option>
     <option value="sitecount">מספר מועמדים לפי אתר</option>
     <option value="matrix">קורלציה בין מועמדים</option>
     <option value="network">רשת קשרים</option>
@@ -411,7 +411,7 @@
   <!-- ===== TAB 2d: COMPARE TWO BOOTHS ===== -->
   <div class="tab-panel" id="tab-boothcompare">
     <div class="card">
-      <h3>השוואת שני קלפיות <span class="hint">— לזיהוי קלפיות עם תוצאות זהות או כמעט זהות (חשד לכפילות נתונים)</span></h3>
+      <h3>השוואת שתי קלפיות <span class="hint">— לזיהוי קלפיות עם תוצאות זהות או כמעט זהות (חשד לכפילות נתונים)</span></h3>
       <div class="picker-row">
         <div class="field">
           <label>קלפי א'</label>
@@ -1115,11 +1115,11 @@ function renderBoothCompareTab(){
   const btB = [...race.booths.values()].find(b => b.name === nameB);
 
   if(!btA || !btB){
-    wrap.innerHTML = '<div class="empty-hint">בחרו שני קלפיות קיימות מהרשימה</div>';
+    wrap.innerHTML = '<div class="empty-hint">בחרו שתי קלפיות קיימות מהרשימה</div>';
     return;
   }
   if(nameA === nameB){
-    wrap.innerHTML = '<div class="empty-hint">בחרו שני קלפיות שונות</div>';
+    wrap.innerHTML = '<div class="empty-hint">בחרו שתי קלפיות שונות</div>';
     return;
   }
 

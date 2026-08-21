@@ -320,6 +320,7 @@
     <button class="tab-btn active" data-tab="overview">דירוג מועמדים</button>
     <button class="tab-btn" data-tab="candidate">לפי מועמד</button>
     <button class="tab-btn" data-tab="site">לפי אתר הצבעה</button>
+    <button class="tab-btn" data-tab="booth">לפי קלפי בודד</button>
     <button class="tab-btn" data-tab="sitecount">מספר מועמדים לפי אתר</button>
     <button class="tab-btn" data-tab="matrix">קורלציה בין מועמדים</button>
     <button class="tab-btn" data-tab="network">רשת קשרים</button>
@@ -329,6 +330,7 @@
     <option value="overview">דירוג מועמדים</option>
     <option value="candidate">לפי מועמד</option>
     <option value="site">לפי אתר הצבעה</option>
+    <option value="booth">לפי קלפי בודד</option>
     <option value="sitecount">מספר מועמדים לפי אתר</option>
     <option value="matrix">קורלציה בין מועמדים</option>
     <option value="network">רשת קשרים</option>
@@ -387,6 +389,21 @@
       </div>
     </div>
     <div id="siteResults"></div>
+  </div>
+
+  <!-- ===== TAB 2c: INDIVIDUAL BOOTH (קלפי) ===== -->
+  <div class="tab-panel" id="tab-booth">
+    <div class="card">
+      <h3>בחירת קלפי בודד <span class="hint">— רזולוציה עדינה יותר מ"אתר הצבעה", לזיהוי דפוסים שנעלמים בצבירה לרמת עיר</span></h3>
+      <div class="picker-row">
+        <div class="field">
+          <label>הקלידו שם קלפי</label>
+          <input type="text" id="boothInput" list="boothOptions" placeholder="לדוגמה: יפיע 01">
+          <datalist id="boothOptions"></datalist>
+        </div>
+      </div>
+    </div>
+    <div id="boothResults"></div>
   </div>
 
   <!-- ===== TAB 2b: CANDIDATE COUNT PER SITE (national list only) ===== -->
@@ -602,6 +619,8 @@ function buildModel(rows){
     const listType = (row[COL.listType]||'').trim();
     const district = (row[COL.district]||'').trim();
     const site = (row[COL.site]||'').trim();
+    const boothId = (row[COL.boothId]||'').toString().trim();
+    const boothName = (row[COL.boothName]||'').trim();
     const votesRaw = row[COL.votes];
     const votes = Number(String(votesRaw).replace(/[^0-9.\-]/g,'')) || 0;
 
@@ -618,6 +637,7 @@ function buildModel(rows){
         label: listType === 'ארצית' ? 'רשימה ארצית' : ('מחוזית — ' + district),
         candidates: new Map(),   // name -> {total, sites: Map(site->votes)}
         sites: new Map(),        // site -> {total, candidates: Map(name->votes)}
+        booths: new Map(),       // boothId -> {id, name, site, total, candidates: Map(name->votes)}
         totalVotes: 0
       };
       races.set(raceKey, race);
@@ -634,6 +654,13 @@ function buildModel(rows){
     if(!st){ st = {name:site, total:0, candidates:new Map()}; race.sites.set(site, st); }
     st.total += votes;
     st.candidates.set(candidate, (st.candidates.get(candidate)||0) + votes);
+
+    if(boothId){
+      let bt = race.booths.get(boothId);
+      if(!bt){ bt = {id:boothId, name: boothName || boothId, site: site, total:0, candidates:new Map()}; race.booths.set(boothId, bt); }
+      bt.total += votes;
+      bt.candidates.set(candidate, (bt.candidates.get(candidate)||0) + votes);
+    }
   }
 
   // pick default race = ארצית if exists, else first
@@ -647,6 +674,9 @@ function sortedCandidates(race){
 }
 function sortedSites(race){
   return [...race.sites.values()].sort((a,b)=>b.total-a.total);
+}
+function sortedBooths(race){
+  return [...race.booths.values()].sort((a,b)=> a.name.localeCompare(b.name,'he'));
 }
 
 // ---------- UI setup ----------
@@ -681,6 +711,7 @@ function setupUI(){
   document.getElementById('candMinVotes').addEventListener('change', renderCandidateTab);
 
   document.getElementById('siteInput').addEventListener('change', renderSiteTab);
+  document.getElementById('boothInput').addEventListener('change', renderBoothTab);
 
   document.getElementById('sitecountMinVotes').addEventListener('change', renderSiteCountTab);
   document.getElementById('sitecountTopN').addEventListener('change', renderSiteCountTab);
@@ -756,15 +787,19 @@ function onRaceChange(){
   candList.innerHTML = sortedCandidates(race).map(c=>`<option value="${escapeHtml(c.name)}">`).join('');
   const siteList = document.getElementById('siteOptions');
   siteList.innerHTML = sortedSites(race).map(s=>`<option value="${escapeHtml(s.name)}">`).join('');
+  const boothList = document.getElementById('boothOptions');
+  boothList.innerHTML = sortedBooths(race).map(b=>`<option value="${escapeHtml(b.name)}">`).join('');
 
   document.getElementById('candidateInput').value = sortedCandidates(race)[0]?.name || '';
   document.getElementById('siteInput').value = sortedSites(race)[0]?.name || '';
+  document.getElementById('boothInput').value = sortedBooths(race)[0]?.name || '';
   document.getElementById('compareAInput').value = sortedCandidates(race)[0]?.name || '';
   document.getElementById('compareBInput').value = sortedCandidates(race)[1]?.name || '';
 
   renderOverviewTab();
   renderCandidateTab();
   renderSiteTab();
+  renderBoothTab();
   renderSiteCountTab();
   renderCompareTab();
   document.getElementById('matrixWrap').innerHTML = '<div class="empty-hint">לחצו "חשב קורלציה" כדי להציג</div>';
@@ -975,6 +1010,64 @@ function renderSiteTab(){
   wrap.innerHTML = `
     <div class="card">
       <h3>${escapeHtml(name)} <span class="hint">— ${st.total.toLocaleString()} קולות סה"כ, ${ranked.length} מועמדים${nat?' · מקסימום תיאורטי לקול: 8.3%':''}</span></h3>
+      <div class="table-scroll">
+        <table>
+          <thead><tr><th>#</th><th>מועמד</th><th>קולות</th><th>אחוז מהקולות</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    </div>
+  `;
+}
+
+// ---------- TAB 2c: individual booth (קלפי) ----------
+
+function renderBoothTab(){
+  const race = getRace();
+  const nat = isNationalRace();
+  const name = document.getElementById('boothInput').value.trim();
+  const bt = [...race.booths.values()].find(b => b.name === name);
+  const wrap = document.getElementById('boothResults');
+
+  if(!bt){
+    wrap.innerHTML = '<div class="empty-hint">בחרו קלפי קיים מהרשימה</div>';
+    return;
+  }
+
+  const ranked = [...bt.candidates.entries()].sort((a,b)=>b[1]-a[1]);
+
+  // organized-voting detector: how many candidates sit within 2% of the
+  // theoretical per-voter maximum (bt.total/12) — the same signature found
+  // manually in יפיע/טמרה/נצרת and a couple of other booths
+  let anomalyHtml = '';
+  if(nat && bt.total > 0){
+    const theoMax = bt.total / 12;
+    const nearMax = ranked.filter(([,v]) => v >= theoMax*0.98 && v <= theoMax*1.02);
+    if(nearMax.length >= 2){
+      anomalyHtml = `<div class="mobile-note" style="display:block;">⚠️ ${nearMax.length} מועמדים בקלפי הזה צמודים כמעט בדיוק לתקרה התיאורטית (${Math.round(theoMax).toLocaleString()} קולות) — סימן אפשרי להצבעה מאורגנת: ${nearMax.map(([n])=>escapeHtml(n)).join(', ')}.</div>`;
+    }
+  }
+
+  const rows = ranked.map(([n,v],i)=>{
+    const rankClass = i===0?'r1':i===1?'r2':i===2?'r3':'';
+    const p = pct(v, bt.total);
+    return `<tr>
+      <td><span class="rank-badge ${rankClass}">${i+1}</span></td>
+      <td>${escapeHtml(n)}</td>
+      <td>${v.toLocaleString()}</td>
+      <td>
+        <div style="display:flex;align-items:center;gap:6px;">
+          <div class="bar-wrap" style="max-width:140px;"><div class="bar-fill" style="width:${Math.min(p,100)}%"></div></div>
+          <span>${p.toFixed(1)}%${maxBadge(p, nat)}</span>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+
+  wrap.innerHTML = `
+    <div class="card">
+      <h3>${escapeHtml(bt.name)} <span class="hint">— באתר ${escapeHtml(bt.site)} · ${bt.total.toLocaleString()} קולות סה"כ, ${ranked.length} מועמדים${nat?' · מקסימום תיאורטי לקול: 8.3%':''}</span></h3>
+      ${anomalyHtml}
       <div class="table-scroll">
         <table>
           <thead><tr><th>#</th><th>מועמד</th><th>קולות</th><th>אחוז מהקולות</th></tr></thead>
